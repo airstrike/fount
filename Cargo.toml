@@ -1,0 +1,25 @@
+[workspace]
+members = [".", "examples/*"]
+
+[package]
+name = "fount"
+description = "A font manager for iced applications"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+iced_core = "0.15.0-dev"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+thiserror = "2"
+tokio = { version = "1", features = ["fs"] }
+toml = "0.8"
+tracing = "0.1"
+ttf-parser = "0.25"
+
+[patch.crates-io]
+iced = { git = "https://github.com/airstrike/iced", branch = "markright" }
+iced_core = { git = "https://github.com/airstrike/iced", branch = "markright" }
+cosmic-text = { git = "https://github.com/airstrike/cosmic-text", branch = "dev" }

@@ -1,0 +1,25 @@
+# fount — font configuration
+#
+# Everything is disabled by default. Enable the sources you want.
+
+[system]
+enabled = true
+# Allowlist: only these families show up. Empty = curated platform defaults.
+# include = ["Helvetica Neue", "Avenir", "Menlo", "SF Pro", "Georgia"]
+# Blocklist: always excluded, even if in include.
+# exclude = ["Apple Symbols"]
+# Extra directories to scan (in addition to platform defaults).
+# dirs = ["~/my-fonts"]
+
+[google]
+enabled = true
+# Families to download eagerly at startup.
+preload = ["Inter"]
+# Max families shown in a picker UI.
+catalog_limit = 100
+
+# Custom fonts loaded from URLs.
+# [[custom]]
+# name = "My Brand Font"
+# url = "https://example.com/fonts/brand.ttf"
+# variants = ["400", "700"]
