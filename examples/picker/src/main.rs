@@ -56,21 +56,26 @@ impl App {
                 self.selected = Some(name.clone());
                 self.error = None;
                 let n = name.clone();
-                Task::future(async move { fount::google::load(&name).await }).then(move |result| {
-                    let n = n.clone();
-                    match result {
-                        Ok(bytes_list) => Task::batch(bytes_list.into_iter().map({
-                            let n = n.clone();
-                            move |bytes| {
+                let catalog = self.fount.google_catalog().cloned();
+                Task::future(async move { fount::google::load(&name, catalog.as_ref()).await })
+                    .then(move |result| {
+                        let n = n.clone();
+                        match result {
+                            Ok(bytes_list) => Task::batch(bytes_list.into_iter().map({
                                 let n = n.clone();
-                                iced::font::load(bytes).map(move |r| {
-                                    Message::FontLoaded(n.clone(), r.map_err(|e| format!("{e:?}")))
-                                })
-                            }
-                        })),
-                        Err(e) => Task::done(Message::FontLoaded(n, Err(e.to_string()))),
-                    }
-                })
+                                move |bytes| {
+                                    let n = n.clone();
+                                    iced::font::load(bytes).map(move |r| {
+                                        Message::FontLoaded(
+                                            n.clone(),
+                                            r.map_err(|e| format!("{e:?}")),
+                                        )
+                                    })
+                                }
+                            })),
+                            Err(e) => Task::done(Message::FontLoaded(n, Err(e.to_string()))),
+                        }
+                    })
             }
             Message::FontLoaded(_name, Ok(())) => Task::none(),
             Message::FontLoaded(name, Err(e)) => {

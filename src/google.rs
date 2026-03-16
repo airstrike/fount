@@ -50,16 +50,22 @@ pub async fn catalog(max_age: Duration) -> Result<Catalog, Error> {
     catalog::parse(&raw)
 }
 
-/// Load standard variants (400, 700, 400i, 700i) of a font family.
+/// Load a font family, using the catalog to determine available variants.
+///
+/// If the family is found in the catalog, only its actual variants are
+/// requested — this avoids requesting an `ital` axis for fonts that don't
+/// support italic, which would cause the CSS2 API to return empty CSS.
+///
+/// Without a catalog, falls back to common variants (400, 700, 400i, 700i).
 ///
 /// Returns raw font file bytes for each variant. The caller is responsible
 /// for registering them with iced via `iced::font::load()`.
-pub async fn load(family: &str) -> Result<Vec<Vec<u8>>, Error> {
-    load_variants(
-        family,
-        &["400".into(), "700".into(), "400i".into(), "700i".into()],
-    )
-    .await
+pub async fn load(family: &str, catalog: Option<&Catalog>) -> Result<Vec<Vec<u8>>, Error> {
+    let variants = catalog
+        .and_then(|c| c.get(family))
+        .map(|f| f.variant_keys())
+        .unwrap_or_else(|| vec!["400".into(), "700".into(), "400i".into(), "700i".into()]);
+    load_variants(family, &variants).await
 }
 
 /// Load specific variants of a font family.

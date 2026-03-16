@@ -10,6 +10,32 @@ pub struct Family {
     pub variants: Variants,
 }
 
+impl Family {
+    /// Variant keys suitable for the Google Fonts CSS2 API.
+    ///
+    /// For static fonts, returns the available keys (e.g. `["400", "700"]`).
+    /// For variable fonts, returns the full weight range (e.g. `["100..900"]`
+    /// or `["100..900", "100..900i"]` if the font has an italic axis).
+    pub fn variant_keys(&self) -> Vec<String> {
+        match &self.variants {
+            Variants::Static { keys } => keys.clone(),
+            Variants::Variable { axes } => {
+                let wght = axes.iter().find(|a| a.tag == "wght");
+                let has_ital = axes.iter().any(|a| a.tag == "ital");
+                let range = match wght {
+                    Some(a) => format!("{}..{}", a.min as u16, a.max as u16),
+                    None => "400".into(),
+                };
+                if has_ital {
+                    vec![range.clone(), format!("{range}i")]
+                } else {
+                    vec![range]
+                }
+            }
+        }
+    }
+}
+
 /// Whether a family uses variable or static font files.
 #[derive(Debug, Clone)]
 pub enum Variants {

@@ -209,4 +209,39 @@ mod tests {
             _ => panic!("expected static"),
         }
     }
+
+    #[test]
+    fn variant_keys_static() {
+        let catalog = parse(SAMPLE_JSON).unwrap();
+        let open = catalog.get("Open Sans").unwrap();
+        assert_eq!(open.variant_keys(), vec!["400", "700"]);
+    }
+
+    #[test]
+    fn variant_keys_variable_no_ital() {
+        let catalog = parse(SAMPLE_JSON).unwrap();
+        // Fira Code: wght 300..700, no ital
+        let fira = catalog.get("Fira Code").unwrap();
+        assert_eq!(fira.variant_keys(), vec!["300..700"]);
+    }
+
+    #[test]
+    fn variant_keys_variable_with_ital() {
+        // Roboto only has wght in the sample — add a test with ital
+        let json = r#"{
+            "familyMetadataList": [{
+                "family": "TestFont",
+                "category": "SANS_SERIF",
+                "popularity": 1,
+                "fonts": {},
+                "axes": [
+                    {"tag": "wght", "min": 100.0, "max": 900.0, "defaultValue": 400.0},
+                    {"tag": "ital", "min": 0.0, "max": 1.0, "defaultValue": 0.0}
+                ]
+            }]
+        }"#;
+        let catalog = parse(json).unwrap();
+        let font = catalog.get("TestFont").unwrap();
+        assert_eq!(font.variant_keys(), vec!["100..900", "100..900i"]);
+    }
 }

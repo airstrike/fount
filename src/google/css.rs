@@ -44,11 +44,17 @@ pub(crate) fn parse(css: &str) -> Vec<FontFace> {
 }
 
 /// Build the CSS2 API URL for the given family and variant keys.
+///
+/// Variant keys are strings like `"400"`, `"700i"` (static weights) or
+/// `"100..900"`, `"100..900i"` (variable weight ranges). A trailing `i`
+/// marks italic.
 pub(crate) fn build_url(family: &str, variants: &[String]) -> String {
     let encoded = family.replace(' ', "+");
     let has_italic = variants.iter().any(|v| v.ends_with('i'));
 
-    let mut tuples: Vec<(u16, u16)> = variants
+    // Parse each variant into (ital, weight_spec) where weight_spec is
+    // either a single value ("400") or a range ("100..900").
+    let mut entries: Vec<(u16, String)> = variants
         .iter()
         .map(|v| {
             let (weight_str, ital) = if let Some(w) = v.strip_suffix('i') {
@@ -56,22 +62,21 @@ pub(crate) fn build_url(family: &str, variants: &[String]) -> String {
             } else {
                 (v.as_str(), 0u16)
             };
-            let weight = weight_str.parse().unwrap_or(400);
-            (ital, weight)
+            (ital, weight_str.to_string())
         })
         .collect();
-    tuples.sort();
-    tuples.dedup();
+    entries.sort();
+    entries.dedup();
 
     if has_italic {
-        let tuples_str = tuples
+        let tuples_str = entries
             .iter()
             .map(|(ital, wght)| format!("{ital},{wght}"))
             .collect::<Vec<_>>()
             .join(";");
         format!("https://fonts.googleapis.com/css2?family={encoded}:ital,wght@{tuples_str}")
     } else {
-        let weights_str = tuples
+        let weights_str = entries
             .iter()
             .map(|(_, wght)| wght.to_string())
             .collect::<Vec<_>>()
@@ -202,5 +207,23 @@ mod tests {
     fn build_url_encodes_spaces() {
         let url = build_url("IBM Plex Sans", &["400".into()]);
         assert!(url.contains("IBM+Plex+Sans"));
+    }
+
+    #[test]
+    fn build_url_variable_weight_range() {
+        let url = build_url("Inter", &["100..900".into()]);
+        assert_eq!(
+            url,
+            "https://fonts.googleapis.com/css2?family=Inter:wght@100..900"
+        );
+    }
+
+    #[test]
+    fn build_url_variable_weight_range_with_italic() {
+        let url = build_url("Inter", &["100..900".into(), "100..900i".into()]);
+        assert_eq!(
+            url,
+            "https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,100..900;1,100..900"
+        );
     }
 }
