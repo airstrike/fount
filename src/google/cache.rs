@@ -3,10 +3,44 @@ use std::time::Duration;
 
 use crate::Error;
 
-fn cache_dir() -> Result<PathBuf, Error> {
+pub(crate) fn cache_dir() -> Result<PathBuf, Error> {
     dirs::cache_dir()
         .map(|d| d.join("fount").join("google"))
         .ok_or(Error::NoCacheDir)
+}
+
+/// Async version of variable-range cache lookup.
+///
+/// Checks if any file in `cache_dir` matches a weight range that covers
+/// the requested variant (e.g. `100..900.ttf` covers `400`).
+async fn find_variable_cache_async(cache_dir: &std::path::Path, variant: &str) -> Option<Vec<u8>> {
+    let (weight, is_italic) = super::parse_variant(variant);
+    let mut entries = tokio::fs::read_dir(cache_dir).await.ok()?;
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let name = entry.file_name();
+        let name = name.to_str()?;
+        let stem = name.strip_suffix(".ttf")?;
+
+        let (range_str, range_italic) = if let Some(s) = stem.strip_suffix('i') {
+            (s, true)
+        } else {
+            (stem, false)
+        };
+
+        if range_italic != is_italic {
+            continue;
+        }
+
+        if let Some((min, max)) = super::parse_weight_range(range_str)
+            && weight >= min
+            && weight <= max
+        {
+            return tokio::fs::read(entry.path()).await.ok();
+        }
+    }
+
+    None
 }
 
 /// Load catalog metadata from disk cache, or fetch and cache it.
@@ -31,6 +65,11 @@ pub(crate) async fn load_or_fetch_metadata(max_age: Duration) -> Result<String, 
 }
 
 /// Load font variant files from disk cache, fetching any that are missing.
+///
+/// For each requested variant, checks:
+/// 1. Exact static file (e.g. `400.ttf`)
+/// 2. Variable-range file (e.g. `100..900.ttf` covers variant `400`)
+/// 3. Downloads from Google Fonts if neither is cached
 pub(crate) async fn load_or_fetch_fonts(
     family: &str,
     variants: &[String],
@@ -40,14 +79,21 @@ pub(crate) async fn load_or_fetch_fonts(
     let mut uncached = Vec::new();
 
     for variant in variants {
+        // 1. Exact match
         let path = dir.join(format!("{variant}.ttf"));
-        match tokio::fs::read(&path).await {
-            Ok(bytes) => {
-                tracing::debug!("cache hit: {family} {variant}");
-                all_bytes.push(bytes);
-            }
-            Err(_) => uncached.push(variant.clone()),
+        if let Ok(bytes) = tokio::fs::read(&path).await {
+            tracing::debug!("cache hit: {family} {variant}");
+            all_bytes.push(bytes);
+            continue;
         }
+        // 2. Variable-range match
+        if let Some(bytes) = find_variable_cache_async(&dir, variant).await {
+            tracing::debug!("variable cache hit: {family} {variant}");
+            all_bytes.push(bytes);
+            continue;
+        }
+        // 3. Need to download
+        uncached.push(variant.clone());
     }
 
     if uncached.is_empty() {

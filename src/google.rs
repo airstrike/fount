@@ -86,11 +86,7 @@ pub async fn load_variants(family: &str, variants: &[String]) -> Result<Vec<Vec<
 ///
 /// Returns raw TTF bytes, or `None` if the font can't be loaded.
 pub fn load_variant_blocking(family: &str, variant: &str) -> Option<Vec<u8>> {
-    let cache_dir = dirs::cache_dir()?
-        .join("fount")
-        .join("google")
-        .join("fonts")
-        .join(family);
+    let cache_dir = cache::cache_dir().ok()?.join("fonts").join(family);
 
     // Exact match (static variant)
     let path = cache_dir.join(format!("{variant}.ttf"));
@@ -161,7 +157,7 @@ fn find_variable_cache(cache_dir: &std::path::Path, variant: &str) -> Option<Vec
 }
 
 /// Parse a variant key like `"400"` → (400, false) or `"700i"` → (700, true).
-fn parse_variant(variant: &str) -> (u16, bool) {
+pub(crate) fn parse_variant(variant: &str) -> (u16, bool) {
     if let Some(w) = variant.strip_suffix('i') {
         (w.parse().unwrap_or(400), true)
     } else {
@@ -170,7 +166,7 @@ fn parse_variant(variant: &str) -> (u16, bool) {
 }
 
 /// Parse a weight range like `"100..900"` → Some((100, 900)).
-fn parse_weight_range(s: &str) -> Option<(u16, u16)> {
+pub(crate) fn parse_weight_range(s: &str) -> Option<(u16, u16)> {
     let (min, max) = s.split_once("..")?;
     Some((min.parse().ok()?, max.parse().ok()?))
 }
