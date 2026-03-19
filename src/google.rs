@@ -78,53 +78,11 @@ pub async fn load_variants(family: &str, variants: &[String]) -> Result<Vec<Vec<
     cache::load_or_fetch_fonts(family, variants).await
 }
 
-/// Load a single font variant (blocking). Checks the disk cache first
-/// (including variable-range files like `100..900.ttf`), then downloads
-/// from Google Fonts if missing.
-///
-/// `variant` follows Google Fonts conventions: `"400"`, `"700"`, `"400i"`, etc.
-///
-/// Returns raw TTF bytes, or `None` if the font can't be loaded.
-pub fn load_variant_blocking(family: &str, variant: &str) -> Option<Vec<u8>> {
-    let cache_dir = cache::cache_dir().ok()?.join("fonts").join(family);
-
-    // Exact match (static variant)
-    let path = cache_dir.join(format!("{variant}.ttf"));
-    if let Ok(bytes) = std::fs::read(&path) {
-        return Some(bytes);
-    }
-
-    // Check for variable-range files that cover this variant.
-    // E.g. variant "400" matches "100..900.ttf", "400i" matches "100..900i.ttf"
-    if let Some(bytes) = find_variable_cache(&cache_dir, variant) {
-        return Some(bytes);
-    }
-
-    // Download via blocking HTTP
-    let variants = vec![variant.to_string()];
-    let url = css::build_url(family, &variants);
-    let client = reqwest::blocking::Client::builder()
-        .user_agent(fetch::USER_AGENT)
-        .build()
-        .ok()?;
-
-    let css_text = client.get(&url).send().ok()?.text().ok()?;
-    let faces = css::parse(&css_text);
-    let face = faces.into_iter().find(|f| f.variant_key() == variant)?;
-
-    let bytes = client.get(&face.url).send().ok()?.bytes().ok()?.to_vec();
-
-    // Cache to disk
-    let _ = std::fs::create_dir_all(&cache_dir);
-    let _ = std::fs::write(&path, &bytes);
-
-    Some(bytes)
-}
-
 /// Check if a variable-range font file in the cache covers the requested variant.
 ///
 /// Variant `"400"` is covered by `"100..900.ttf"` if 100 <= 400 <= 900.
 /// Variant `"400i"` is covered by `"100..900i.ttf"`.
+#[cfg(test)]
 fn find_variable_cache(cache_dir: &std::path::Path, variant: &str) -> Option<Vec<u8>> {
     let (weight, is_italic) = parse_variant(variant);
     let entries = std::fs::read_dir(cache_dir).ok()?;

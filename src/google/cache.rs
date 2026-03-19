@@ -9,11 +9,10 @@ pub(crate) fn cache_dir() -> Result<PathBuf, Error> {
         .ok_or(Error::NoCacheDir)
 }
 
-/// Async version of variable-range cache lookup.
+/// Check if a variable-range font file in the cache covers the requested variant.
 ///
-/// Checks if any file in `cache_dir` matches a weight range that covers
-/// the requested variant (e.g. `100..900.ttf` covers `400`).
-async fn find_variable_cache_async(cache_dir: &std::path::Path, variant: &str) -> Option<Vec<u8>> {
+/// E.g. `100..900.ttf` covers variant `400`, `100..900i.ttf` covers `400i`.
+async fn find_variable_cache(cache_dir: &std::path::Path, variant: &str) -> Option<Vec<u8>> {
     let (weight, is_italic) = super::parse_variant(variant);
     let mut entries = tokio::fs::read_dir(cache_dir).await.ok()?;
 
@@ -87,7 +86,7 @@ pub(crate) async fn load_or_fetch_fonts(
             continue;
         }
         // 2. Variable-range match
-        if let Some(bytes) = find_variable_cache_async(&dir, variant).await {
+        if let Some(bytes) = find_variable_cache(&dir, variant).await {
             tracing::debug!("variable cache hit: {family} {variant}");
             all_bytes.push(bytes);
             continue;
