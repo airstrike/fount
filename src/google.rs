@@ -78,21 +78,29 @@ pub async fn load_variants(family: &str, variants: &[String]) -> Result<Vec<Vec<
     cache::load_or_fetch_fonts(family, variants).await
 }
 
-/// Load a single font variant (blocking). Checks the disk cache first,
-/// then downloads from Google Fonts if missing.
+/// Load a single font variant (blocking). Checks the disk cache first
+/// (including variable-range files like `100..900.ttf`), then downloads
+/// from Google Fonts if missing.
 ///
 /// `variant` follows Google Fonts conventions: `"400"`, `"700"`, `"400i"`, etc.
 ///
 /// Returns raw TTF bytes, or `None` if the font can't be loaded.
 pub fn load_variant_blocking(family: &str, variant: &str) -> Option<Vec<u8>> {
-    // Check disk cache first
     let cache_dir = dirs::cache_dir()?
         .join("fount")
         .join("google")
         .join("fonts")
         .join(family);
+
+    // Exact match (static variant)
     let path = cache_dir.join(format!("{variant}.ttf"));
     if let Ok(bytes) = std::fs::read(&path) {
+        return Some(bytes);
+    }
+
+    // Check for variable-range files that cover this variant.
+    // E.g. variant "400" matches "100..900.ttf", "400i" matches "100..900i.ttf"
+    if let Some(bytes) = find_variable_cache(&cache_dir, variant) {
         return Some(bytes);
     }
 
@@ -115,4 +123,103 @@ pub fn load_variant_blocking(family: &str, variant: &str) -> Option<Vec<u8>> {
     let _ = std::fs::write(&path, &bytes);
 
     Some(bytes)
+}
+
+/// Check if a variable-range font file in the cache covers the requested variant.
+///
+/// Variant `"400"` is covered by `"100..900.ttf"` if 100 <= 400 <= 900.
+/// Variant `"400i"` is covered by `"100..900i.ttf"`.
+fn find_variable_cache(cache_dir: &std::path::Path, variant: &str) -> Option<Vec<u8>> {
+    let (weight, is_italic) = parse_variant(variant);
+    let entries = std::fs::read_dir(cache_dir).ok()?;
+
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_str()?;
+        let stem = name.strip_suffix(".ttf")?;
+
+        // Only match range patterns like "100..900" or "100..900i"
+        let (range_str, range_italic) = if let Some(s) = stem.strip_suffix('i') {
+            (s, true)
+        } else {
+            (stem, false)
+        };
+
+        if range_italic != is_italic {
+            continue;
+        }
+
+        if let Some((min, max)) = parse_weight_range(range_str)
+            && weight >= min
+            && weight <= max
+        {
+            return std::fs::read(entry.path()).ok();
+        }
+    }
+
+    None
+}
+
+/// Parse a variant key like `"400"` → (400, false) or `"700i"` → (700, true).
+fn parse_variant(variant: &str) -> (u16, bool) {
+    if let Some(w) = variant.strip_suffix('i') {
+        (w.parse().unwrap_or(400), true)
+    } else {
+        (variant.parse().unwrap_or(400), false)
+    }
+}
+
+/// Parse a weight range like `"100..900"` → Some((100, 900)).
+fn parse_weight_range(s: &str) -> Option<(u16, u16)> {
+    let (min, max) = s.split_once("..")?;
+    Some((min.parse().ok()?, max.parse().ok()?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_variant_normal() {
+        assert_eq!(parse_variant("400"), (400, false));
+        assert_eq!(parse_variant("700"), (700, false));
+    }
+
+    #[test]
+    fn parse_variant_italic() {
+        assert_eq!(parse_variant("400i"), (400, true));
+        assert_eq!(parse_variant("700i"), (700, true));
+    }
+
+    #[test]
+    fn parse_weight_range_valid() {
+        assert_eq!(parse_weight_range("100..900"), Some((100, 900)));
+        assert_eq!(parse_weight_range("400..700"), Some((400, 700)));
+    }
+
+    #[test]
+    fn parse_weight_range_invalid() {
+        assert_eq!(parse_weight_range("400"), None);
+        assert_eq!(parse_weight_range("abc..def"), None);
+    }
+
+    #[test]
+    fn find_variable_cache_matches_range() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path();
+
+        // Create a variable font file "100..900.ttf"
+        std::fs::write(cache.join("100..900.ttf"), b"fake-font-data").unwrap();
+
+        // "400" should match 100..900
+        assert!(find_variable_cache(cache, "400").is_some());
+        // "700" should match too
+        assert!(find_variable_cache(cache, "700").is_some());
+        // "400i" should NOT match (no italic range file)
+        assert!(find_variable_cache(cache, "400i").is_none());
+
+        // Add italic range
+        std::fs::write(cache.join("100..900i.ttf"), b"fake-italic-data").unwrap();
+        assert!(find_variable_cache(cache, "400i").is_some());
+    }
 }
