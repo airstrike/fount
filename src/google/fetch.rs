@@ -7,7 +7,7 @@ const METADATA_URL: &str = "https://fonts.google.com/metadata/fonts";
 /// Google Fonts serves different formats depending on the User-Agent header.
 /// An empty or default reqwest UA may return no `url()` entries at all.
 /// This UA string gets us `.ttf` files which cosmic-text can load directly.
-const USER_AGENT: &str = "Mozilla/4.0";
+pub(crate) const USER_AGENT: &str = "Mozilla/4.0";
 
 fn client() -> reqwest::Client {
     reqwest::Client::builder()

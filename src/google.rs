@@ -7,8 +7,8 @@ pub mod catalog;
 pub mod family;
 
 mod cache;
-mod css;
-mod fetch;
+pub(crate) mod css;
+pub(crate) mod fetch;
 
 pub use catalog::Catalog;
 pub use family::{Axis, Category, Family, Variants};
@@ -76,4 +76,43 @@ pub async fn load(family: &str, catalog: Option<&Catalog>) -> Result<Vec<Vec<u8>
 /// Returns raw font file bytes. The caller registers them with iced.
 pub async fn load_variants(family: &str, variants: &[String]) -> Result<Vec<Vec<u8>>, Error> {
     cache::load_or_fetch_fonts(family, variants).await
+}
+
+/// Load a single font variant (blocking). Checks the disk cache first,
+/// then downloads from Google Fonts if missing.
+///
+/// `variant` follows Google Fonts conventions: `"400"`, `"700"`, `"400i"`, etc.
+///
+/// Returns raw TTF bytes, or `None` if the font can't be loaded.
+pub fn load_variant_blocking(family: &str, variant: &str) -> Option<Vec<u8>> {
+    // Check disk cache first
+    let cache_dir = dirs::cache_dir()?
+        .join("fount")
+        .join("google")
+        .join("fonts")
+        .join(family);
+    let path = cache_dir.join(format!("{variant}.ttf"));
+    if let Ok(bytes) = std::fs::read(&path) {
+        return Some(bytes);
+    }
+
+    // Download via blocking HTTP
+    let variants = vec![variant.to_string()];
+    let url = css::build_url(family, &variants);
+    let client = reqwest::blocking::Client::builder()
+        .user_agent(fetch::USER_AGENT)
+        .build()
+        .ok()?;
+
+    let css_text = client.get(&url).send().ok()?.text().ok()?;
+    let faces = css::parse(&css_text);
+    let face = faces.into_iter().find(|f| f.variant_key() == variant)?;
+
+    let bytes = client.get(&face.url).send().ok()?.bytes().ok()?.to_vec();
+
+    // Cache to disk
+    let _ = std::fs::create_dir_all(&cache_dir);
+    let _ = std::fs::write(&path, &bytes);
+
+    Some(bytes)
 }
