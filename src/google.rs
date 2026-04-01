@@ -65,7 +65,7 @@ pub async fn load(family: &str, catalog: Option<&Catalog>) -> Result<Vec<Vec<u8>
         .and_then(|c| c.get(family))
         .map(|f| f.variant_keys())
         .unwrap_or_else(|| vec!["400".into(), "700".into(), "400i".into(), "700i".into()]);
-    load_variants(family, &variants).await
+    load_variants(family.to_owned(), variants).await
 }
 
 /// Load specific variants of a font family.
@@ -74,8 +74,11 @@ pub async fn load(family: &str, catalog: Option<&Catalog>) -> Result<Vec<Vec<u8>
 /// `"400i"` (italic), `"700i"`, etc.
 ///
 /// Returns raw font file bytes. The caller registers them with iced.
-pub async fn load_variants(family: &str, variants: &[String]) -> Result<Vec<Vec<u8>>, Error> {
-    cache::load_or_fetch_fonts(family, variants).await
+///
+/// Takes owned `String` and `Vec` so the returned future is `'static`
+/// and can be used with `Task::future()` without lifetime issues.
+pub async fn load_variants(family: String, variants: Vec<String>) -> Result<Vec<Vec<u8>>, Error> {
+    cache::load_or_fetch_fonts(&family, &variants).await
 }
 
 /// Check if a variable-range font file in the cache covers the requested variant.
