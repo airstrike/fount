@@ -28,7 +28,7 @@ pub(crate) async fn metadata() -> Result<String, Error> {
 }
 
 /// Fetch the CSS2 stylesheet for a family's variants.
-pub(crate) async fn css(family: &str, variants: &[String]) -> Result<String, Error> {
+pub(crate) async fn css<V: AsRef<str>>(family: &str, variants: &[V]) -> Result<String, Error> {
     let url = super::css::build_url(family, variants);
     tracing::debug!("fetching CSS: {url}");
     let text = client().get(&url).send().await?.text().await?;

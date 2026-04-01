@@ -69,15 +69,16 @@ pub(crate) async fn load_or_fetch_metadata(max_age: Duration) -> Result<String, 
 /// 1. Exact static file (e.g. `400.ttf`)
 /// 2. Variable-range file (e.g. `100..900.ttf` covers variant `400`)
 /// 3. Downloads from Google Fonts if neither is cached
-pub(crate) async fn load_or_fetch_fonts(
+pub(crate) async fn load_or_fetch_fonts<V: AsRef<str>>(
     family: &str,
-    variants: &[String],
+    variants: &[V],
 ) -> Result<Vec<Vec<u8>>, Error> {
     let dir = cache_dir()?.join("fonts").join(family);
     let mut all_bytes = Vec::new();
     let mut uncached = Vec::new();
 
     for variant in variants {
+        let variant = variant.as_ref();
         // 1. Exact match
         let path = dir.join(format!("{variant}.ttf"));
         if let Ok(bytes) = tokio::fs::read(&path).await {
@@ -92,7 +93,7 @@ pub(crate) async fn load_or_fetch_fonts(
             continue;
         }
         // 3. Need to download
-        uncached.push(variant.clone());
+        uncached.push(variant);
     }
 
     if uncached.is_empty() {
