@@ -1,15 +1,14 @@
 # fount — font configuration
-#
-# Everything is disabled by default. Enable the sources you want.
 
 [system]
-enabled = true
 # Allowlist: only these families show up. Empty = curated platform defaults.
 # include = ["Helvetica Neue", "Avenir", "Menlo", "SF Pro", "Georgia"]
 # Blocklist: always excluded, even if in include.
 # exclude = ["Apple Symbols"]
-# Extra directories to scan (in addition to platform defaults).
-# dirs = ["~/my-fonts"]
+# Full list of directories to scan. Omit to use platform defaults —
+# which include Microsoft Office's private font paths when the
+# `office` cargo feature is enabled.
+# dirs = ["/System/Library/Fonts", "/Library/Fonts", "~/my-fonts"]
 
 [google]
 enabled = true

@@ -40,7 +40,7 @@ mod tests {
     #[test]
     fn default_config_loads_nothing() {
         let config: Config = toml::from_str("").unwrap();
-        assert!(!config.system.enabled);
+        assert!(config.system.include.is_empty());
         assert!(!config.google.enabled);
         assert!(config.custom.is_empty());
     }
@@ -49,7 +49,6 @@ mod tests {
     fn parse_full_config() {
         let toml = r#"
 [system]
-enabled = true
 include = ["Helvetica Neue", "Menlo"]
 exclude = ["Apple Symbols"]
 

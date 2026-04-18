@@ -4,8 +4,16 @@ members = [".", "examples/*"]
 [package]
 name = "fount"
 description = "A font manager for iced applications"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
+
+[features]
+default = []
+# Discover fonts bundled with Microsoft Office apps (e.g. Aptos, Calibri,
+# Cambria). These fonts ship inside per-app resource directories rather
+# than the OS font folders, so opting in scans those locations in addition
+# to the system defaults. Use only on machines with a valid Office license.
+office = []
 
 [dependencies]
 iced_core = "0.15.0-dev"

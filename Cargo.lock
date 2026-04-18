@@ -540,7 +540,7 @@ dependencies = [
 [[package]]
 name = "cosmic-text"
 version = "0.18.2"
-source = "git+https://github.com/airstrike/cosmic-text?branch=dev#fe7887f468804a6367a31f8a8af5dcf2fabc17c4"
+source = "git+https://github.com/airstrike/cosmic-text?branch=dev#adf549815c7b845090279180707d49c29ac4dc30"
 dependencies = [
  "bitflags 2.11.0",
  "fontdb",
@@ -871,7 +871,7 @@ dependencies = [
 
 [[package]]
 name = "fount"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dirs",
  "iced_core",
@@ -1272,7 +1272,7 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#a8509f1858266a36a03254a37c1a779891ac3875"
+source = "git+https://github.com/airstrike/iced?branch=markright#75f655ac6e0d863722c7db6983b47ecd69cde326"
 dependencies = [
  "iced_core",
  "iced_debug",
@@ -1287,7 +1287,7 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#a8509f1858266a36a03254a37c1a779891ac3875"
+source = "git+https://github.com/airstrike/iced?branch=markright#75f655ac6e0d863722c7db6983b47ecd69cde326"
 dependencies = [
  "bitflags 2.11.0",
  "bytes",
@@ -1304,7 +1304,7 @@ dependencies = [
 [[package]]
 name = "iced_debug"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#a8509f1858266a36a03254a37c1a779891ac3875"
+source = "git+https://github.com/airstrike/iced?branch=markright#75f655ac6e0d863722c7db6983b47ecd69cde326"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -1314,7 +1314,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#a8509f1858266a36a03254a37c1a779891ac3875"
+source = "git+https://github.com/airstrike/iced?branch=markright#75f655ac6e0d863722c7db6983b47ecd69cde326"
 dependencies = [
  "futures",
  "iced_core",
@@ -1328,7 +1328,7 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#a8509f1858266a36a03254a37c1a779891ac3875"
+source = "git+https://github.com/airstrike/iced?branch=markright#75f655ac6e0d863722c7db6983b47ecd69cde326"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -1346,7 +1346,7 @@ dependencies = [
 [[package]]
 name = "iced_program"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#a8509f1858266a36a03254a37c1a779891ac3875"
+source = "git+https://github.com/airstrike/iced?branch=markright#75f655ac6e0d863722c7db6983b47ecd69cde326"
 dependencies = [
  "iced_graphics",
  "iced_runtime",
@@ -1355,7 +1355,7 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#a8509f1858266a36a03254a37c1a779891ac3875"
+source = "git+https://github.com/airstrike/iced?branch=markright#75f655ac6e0d863722c7db6983b47ecd69cde326"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -1367,7 +1367,7 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#a8509f1858266a36a03254a37c1a779891ac3875"
+source = "git+https://github.com/airstrike/iced?branch=markright#75f655ac6e0d863722c7db6983b47ecd69cde326"
 dependencies = [
  "bytes",
  "iced_core",
@@ -1379,7 +1379,7 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#a8509f1858266a36a03254a37c1a779891ac3875"
+source = "git+https://github.com/airstrike/iced?branch=markright#75f655ac6e0d863722c7db6983b47ecd69cde326"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -1389,13 +1389,13 @@ dependencies = [
  "log",
  "rustc-hash 2.1.1",
  "softbuffer",
- "tiny-skia",
+ "tiny-skia 0.12.0",
 ]
 
 [[package]]
 name = "iced_wgpu"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#a8509f1858266a36a03254a37c1a779891ac3875"
+source = "git+https://github.com/airstrike/iced?branch=markright#75f655ac6e0d863722c7db6983b47ecd69cde326"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -1414,7 +1414,7 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#a8509f1858266a36a03254a37c1a779891ac3875"
+source = "git+https://github.com/airstrike/iced?branch=markright#75f655ac6e0d863722c7db6983b47ecd69cde326"
 dependencies = [
  "iced_renderer",
  "log",
@@ -1427,7 +1427,7 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.15.0-dev"
-source = "git+https://github.com/airstrike/iced?branch=markright#a8509f1858266a36a03254a37c1a779891ac3875"
+source = "git+https://github.com/airstrike/iced?branch=markright#75f655ac6e0d863722c7db6983b47ecd69cde326"
 dependencies = [
  "arboard",
  "iced_debug",
@@ -2404,6 +2404,7 @@ version = "0.1.0"
 dependencies = [
  "fount",
  "iced",
+ "tokio",
 ]
 
 [[package]]
@@ -2903,7 +2904,7 @@ dependencies = [
  "log",
  "memmap2",
  "smithay-client-toolkit",
- "tiny-skia",
+ "tiny-skia 0.11.4",
 ]
 
 [[package]]
@@ -3288,7 +3289,21 @@ dependencies = [
  "bytemuck",
  "cfg-if",
  "log",
- "tiny-skia-path",
+ "tiny-skia-path 0.11.4",
+]
+
+[[package]]
+name = "tiny-skia"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47ffee5eaaf5527f630fb0e356b90ebdec84d5d18d937c5e440350f88c5a91ea"
+dependencies = [
+ "arrayref",
+ "arrayvec",
+ "bytemuck",
+ "cfg-if",
+ "log",
+ "tiny-skia-path 0.12.0",
 ]
 
 [[package]]
@@ -3296,6 +3311,17 @@ name = "tiny-skia-path"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c9e7fc0c2e86a30b117d0462aa261b72b7a99b7ebd7deb3a14ceda95c5bdc93"
+dependencies = [
+ "arrayref",
+ "bytemuck",
+ "strict-num",
+]
+
+[[package]]
+name = "tiny-skia-path"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edca365c3faccca67d06593c5980fa6c57687de727a03131735bb85f01fdeeb9"
 dependencies = [
  "arrayref",
  "bytemuck",

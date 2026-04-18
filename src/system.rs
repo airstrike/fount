@@ -3,20 +3,45 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 /// System font discovery settings.
-#[derive(Debug, Clone, Default, Deserialize)]
+///
+/// `Config::default()` is the "scan everything sensible" preset: it
+/// populates [`Config::dirs`] with [`default_dirs`], which includes
+/// platform system font directories and — when the `office` cargo feature
+/// is enabled — Microsoft Office's private font directories as well.
+///
+/// To customize, build from `Default`:
+///
+/// ```no_run
+/// let mut cfg = fount::system::Config::default();
+/// cfg.dirs.push("/my/extra/font/dir".into());         // add
+/// cfg.dirs = vec!["/only/scan/this".into()];          // replace
+/// cfg.exclude.push("Comic Sans MS".into());           // filter
+/// fount::system::discover(&cfg);
+/// ```
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct Config {
-    pub enabled: bool,
-    /// Allowlist — only these families are included. Empty = use built-in
-    /// curated list (see [`MACOS_SANE_FONTS`]).
-    #[serde(default)]
+    /// Allowlist — only these families are included. Empty = use the
+    /// built-in curated list (see [`MACOS_SANE_FONTS`]) on macOS, or no
+    /// filtering at all on other platforms.
     pub include: Vec<String>,
     /// Blocklist — these families are always excluded, even if in `include`.
-    #[serde(default)]
     pub exclude: Vec<String>,
-    /// Extra directories to scan (in addition to platform defaults).
-    #[serde(default)]
+    /// Directories to scan. Defaults to [`default_dirs`], which is the
+    /// platform's system font directories plus Office private font paths
+    /// when the `office` cargo feature is enabled.
     pub dirs: Vec<PathBuf>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            include: Vec::new(),
+            exclude: Vec::new(),
+            dirs: default_dirs(),
+        }
+    }
 }
 
 /// A system font discovered on disk.
@@ -107,7 +132,66 @@ pub const MACOS_SANE_FONTS: &[&str] = &[
     "Verdana",
 ];
 
+/// Directories where Microsoft Office stores its bundled (non-system)
+/// fonts. Returns an empty Vec on platforms where Office isn't installed
+/// or when the `office` cargo feature is disabled.
+///
+/// These fonts are licensed for use on machines with a valid Office
+/// installation. Only enable scanning on such machines.
+#[cfg(feature = "office")]
+fn office_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+
+    #[cfg(target_os = "macos")]
+    {
+        // Office for Mac bundles fonts inside each app's Resources/DFonts
+        // directory. The same family typically appears across all apps;
+        // duplicates are deduped later by family+style.
+        const APPS: &[&str] = &[
+            "Microsoft Word",
+            "Microsoft Excel",
+            "Microsoft PowerPoint",
+            "Microsoft Outlook",
+            "Microsoft OneNote",
+        ];
+        for app in APPS {
+            dirs.push(PathBuf::from(format!(
+                "/Applications/{app}.app/Contents/Resources/DFonts"
+            )));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Click-to-Run Office stores private fonts under its VFS layout.
+        // Both 32- and 64-bit install roots are checked.
+        for root in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Some(pf) = std::env::var_os(root) {
+                dirs.push(
+                    PathBuf::from(pf)
+                        .join("Microsoft Office")
+                        .join("root")
+                        .join("VFS")
+                        .join("Fonts")
+                        .join("private"),
+                );
+            }
+        }
+    }
+
+    dirs
+}
+
+#[cfg(not(feature = "office"))]
+fn office_dirs() -> Vec<PathBuf> {
+    Vec::new()
+}
+
 /// Default font directories for the current platform.
+///
+/// Includes the OS's standard system font directories. When the `office`
+/// cargo feature is enabled, also includes the directories where Microsoft
+/// Office bundles its private fonts (Aptos, Calibri, Cambria, etc.).
 pub fn default_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
 
@@ -139,6 +223,10 @@ pub fn default_dirs() -> Vec<PathBuf> {
         }
     }
 
+    // Office-bundled fonts (Aptos, Calibri, Cambria, ...). Empty when the
+    // `office` feature is disabled, so callers don't need a cfg gate.
+    dirs.extend(office_dirs());
+
     dirs
 }
 
@@ -147,14 +235,6 @@ pub fn default_dirs() -> Vec<PathBuf> {
 /// This is a blocking operation (directory traversal + font parsing).
 /// Wrap in `tokio::task::spawn_blocking` if calling from async context.
 pub fn discover(config: &Config) -> Vec<Font> {
-    let dirs = if config.dirs.is_empty() {
-        default_dirs()
-    } else {
-        let mut dirs = default_dirs();
-        dirs.extend(config.dirs.iter().cloned());
-        dirs
-    };
-
     let allowlist: Vec<&str> = if config.include.is_empty() {
         #[cfg(target_os = "macos")]
         {
@@ -169,7 +249,7 @@ pub fn discover(config: &Config) -> Vec<Font> {
     };
 
     let mut fonts = Vec::new();
-    for dir in &dirs {
+    for dir in &config.dirs {
         scan_directory(dir, &mut fonts);
     }
 
@@ -281,14 +361,142 @@ fn parse_collection(path: &Path, fonts: &mut Vec<Font>) {
 }
 
 fn extract_name(face: &ttf_parser::Face, primary_id: u16, fallback_id: u16) -> Option<String> {
-    face.names()
-        .into_iter()
-        .find(|n| n.name_id == primary_id)
-        .and_then(|n| n.to_string())
-        .or_else(|| {
-            face.names()
-                .into_iter()
-                .find(|n| n.name_id == fallback_id)
-                .and_then(|n| n.to_string())
-        })
+    decode_name_id(face, primary_id).or_else(|| decode_name_id(face, fallback_id))
+}
+
+/// Find a name table entry by id and decode it. Tries UTF-16BE first (the
+/// usual Windows/Unicode platform encoding), then falls back to a byte-level
+/// decode for Macintosh-platform names.
+///
+/// Microsoft's Office-bundled Aptos files only carry Macintosh-platform name
+/// records, so the UTF-16BE-only path that ships with `ttf_parser::Name::to_string`
+/// returns `None` and the font is silently dropped without this fallback.
+fn decode_name_id(face: &ttf_parser::Face, name_id: u16) -> Option<String> {
+    let mut fallback: Option<String> = None;
+    for name in face.names() {
+        if name.name_id != name_id {
+            continue;
+        }
+        if let Some(s) = name.to_string() {
+            return Some(s);
+        }
+        if fallback.is_none()
+            && name.platform_id == ttf_parser::PlatformId::Macintosh
+            && let Some(s) = decode_mac_roman(name.name)
+        {
+            fallback = Some(s);
+        }
+    }
+    fallback
+}
+
+/// Best-effort decode of a Mac Roman byte string. Returns None if the bytes
+/// don't form a recognizable name (empty or all-zero).
+fn decode_mac_roman(bytes: &[u8]) -> Option<String> {
+    if bytes.is_empty() || bytes.iter().all(|&b| b == 0) {
+        return None;
+    }
+    // Mac Roman maps 0x00..0x7F identically to ASCII. Bytes >= 0x80 use a
+    // different table than Latin-1, but for the font *family* and *style*
+    // strings we care about (Aptos, Calibri, Bold, Light, etc.) the names
+    // are pure ASCII in practice. Decode ASCII directly and substitute
+    // U+FFFD for any high bytes — good enough for matching, and lossless
+    // for everything we've seen in real Office fonts.
+    let s: String = bytes
+        .iter()
+        .map(|&b| if b < 0x80 { b as char } else { '\u{FFFD}' })
+        .collect();
+    Some(s)
+}
+
+#[cfg(all(test, feature = "office", target_os = "macos"))]
+mod office_tests {
+    use super::*;
+
+    /// Verifies that Office font discovery actually surfaces Aptos on a Mac
+    /// with Microsoft Office installed. Skipped (with a warning) if no Office
+    /// DFonts directory exists, so it remains useful in CI without Office.
+    /// Discovery should keep *all* styles of a family, not just one — otherwise
+    /// callers that only register the first match end up with (e.g.) Aptos-Black
+    /// in the database while the renderer asks for Aptos at weight 400 and gets
+    /// no good match. This test pins the contract.
+    #[test]
+    fn keeps_all_aptos_styles() {
+        if !office_dirs().iter().any(|d| d.is_dir()) {
+            eprintln!("skipping keeps_all_aptos_styles: no Office DFonts on this machine");
+            return;
+        }
+
+        let fonts = discover(&Config::default());
+
+        let aptos: Vec<&Font> = fonts
+            .iter()
+            .filter(|f| f.family.eq_ignore_ascii_case("Aptos"))
+            .collect();
+
+        assert!(
+            aptos.len() >= 4,
+            "expected several Aptos styles (Regular, Bold, Italic, Light, ...) — \
+             got {} entries: {:?}",
+            aptos.len(),
+            aptos.iter().map(|f| &f.style).collect::<Vec<_>>()
+        );
+
+        // Sanity: Regular must be present, otherwise default-weight rendering
+        // will silently fall back to a synthesized weight from a heavier face.
+        assert!(
+            aptos
+                .iter()
+                .any(|f| f.style.eq_ignore_ascii_case("Regular")),
+            "expected an 'Regular' style for Aptos in discovery output; got: {:?}",
+            aptos.iter().map(|f| &f.style).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn discovers_aptos_from_office() {
+        // Sanity-check that *some* Office font directory exists, otherwise
+        // skip — there's nothing meaningful to assert.
+        let dirs = office_dirs();
+        let any_exists = dirs.iter().any(|d| d.is_dir());
+        if !any_exists {
+            eprintln!(
+                "skipping discovers_aptos_from_office: no Office DFonts directories on this machine"
+            );
+            return;
+        }
+
+        // Raw scan of the office dirs only — bypasses the system allowlist
+        // so we can see exactly what ttf-parser thinks is in there.
+        let mut raw = Vec::new();
+        for dir in &dirs {
+            scan_directory(dir, &mut raw);
+        }
+        raw.sort_by(|a, b| a.family.cmp(&b.family).then(a.style.cmp(&b.style)));
+        raw.dedup_by(|a, b| a.family == b.family && a.style == b.style);
+
+        let raw_families: Vec<&str> = raw.iter().map(|f| f.family.as_str()).collect();
+        eprintln!(
+            "raw office families ({}): {:?}",
+            raw_families.len(),
+            raw_families
+        );
+
+        assert!(
+            raw.iter().any(|f| f.family.eq_ignore_ascii_case("Aptos")),
+            "expected ttf-parser to extract family 'Aptos' from one of the Office DFonts files; \
+             got families: {raw_families:?}"
+        );
+
+        // Now exercise the full pipeline (allowlist + dedup) and confirm
+        // Aptos survives all the filtering.
+        let fonts = discover(&Config::default());
+        let families = family_names(&fonts);
+        eprintln!("discover() families ({}): {:?}", families.len(), families);
+
+        assert!(
+            families.iter().any(|f| f.eq_ignore_ascii_case("Aptos")),
+            "Aptos was found in the raw scan but filtered out by discover(); families: {families:?}"
+        );
+    }
 }
