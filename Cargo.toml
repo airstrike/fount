@@ -28,9 +28,8 @@ tracing = "0.1"
 ttf-parser = "0.25"
 
 [patch.crates-io]
-iced = { git = "https://github.com/airstrike/iced", branch = "markright" }
-iced_core = { git = "https://github.com/airstrike/iced", branch = "markright" }
-cosmic-text = { git = "https://github.com/airstrike/cosmic-text", branch = "dev" }
+iced = { git = "https://github.com/iced-rs/iced", branch = "master" }
+iced_core = { git = "https://github.com/iced-rs/iced", branch = "master" }
 
 [dev-dependencies]
 tempfile = "3.27.0"
