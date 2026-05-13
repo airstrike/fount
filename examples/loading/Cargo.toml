@@ -1,0 +1,10 @@
+[package]
+name = "loading"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+fount = { path = "../.." }
+iced = { version = "0.15.0-dev", features = ["tokio"] }
+tokio = { version = "1", features = ["rt"] }
