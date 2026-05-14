@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use iced::widget::{center, column, progress_bar, text};
-use iced::{Background, Center, Color, Element, Font, Subscription, Task, border, color};
+use iced::{Background, Center, Element, Font, Subscription, Task, Theme, border};
 
 const INTER_REGULAR: &[u8] = include_bytes!("../assets/Inter-Regular.ttf");
 
@@ -54,6 +54,12 @@ struct Loading {
 }
 
 impl Loading {
+    fn is_done(&self) -> bool {
+        self.error.is_none()
+            && matches!(self.pending_registers, Some(0))
+            && self.displayed >= STAGE_REGISTERED - 0.005
+    }
+
     fn stage_target(&self) -> f32 {
         if self.error.is_some() {
             return self.displayed;
@@ -97,10 +103,13 @@ impl App {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match self {
-            App::Loading(loading) => loading.update(message).unwrap_or_else(|| {
-                *self = App::Loaded(Loaded);
-                Task::none()
-            }),
+            App::Loading(loading) => {
+                let task = loading.update(message);
+                if loading.is_done() {
+                    *self = App::Loaded(Loaded);
+                }
+                task
+            }
             App::Loaded(_) => Task::none(),
         }
     }
@@ -121,9 +130,7 @@ impl App {
 }
 
 impl Loading {
-    /// Process a message. Returns `Some(task)` while still loading, or `None`
-    /// to signal the caller to transition to [`Loaded`].
-    fn update(&mut self, message: Message) -> Option<Task<Message>> {
+    fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::CatalogLoaded(Ok(catalog)) => {
                 let owned = catalog.clone();
@@ -133,11 +140,11 @@ impl Loading {
                     )
                     .map(|r| Message::FontDownloaded(r.map_err(|e| e.to_string())));
                 self.catalog = Some(catalog);
-                Some(task)
+                task
             }
             Message::CatalogLoaded(Err(e)) => {
                 self.error = Some(format!("Catalog: {e}"));
-                Some(Task::none())
+                Task::none()
             }
             Message::FontDownloaded(Ok(bytes)) => {
                 self.pending_registers = Some(bytes.len());
@@ -145,11 +152,11 @@ impl Loading {
                     iced::font::load(b)
                         .map(|r| Message::FontRegistered(r.map_err(|e| format!("{e:?}"))))
                 });
-                Some(Task::batch(tasks))
+                Task::batch(tasks)
             }
             Message::FontDownloaded(Err(e)) => {
                 self.error = Some(format!("Download: {e}"));
-                Some(Task::none())
+                Task::none()
             }
             Message::FontRegistered(result) => {
                 if let Some(remaining) = self.pending_registers.as_mut() {
@@ -158,18 +165,12 @@ impl Loading {
                 if let Err(e) = result {
                     self.error = Some(format!("Register: {e}"));
                 }
-                Some(Task::none())
+                Task::none()
             }
             Message::Tick => {
                 let target = self.stage_target();
                 self.displayed += (target - self.displayed) * EASE;
-                if self.error.is_none()
-                    && matches!(self.pending_registers, Some(0))
-                    && self.displayed >= STAGE_REGISTERED - 0.005
-                {
-                    return None;
-                }
-                Some(Task::none())
+                Task::none()
             }
         }
     }
@@ -178,9 +179,12 @@ impl Loading {
         let title = text("Loading").size(32);
 
         let status: Element<'_, Message> = if let Some(ref e) = self.error {
-            text(e.clone()).size(13).color(color!(0xcc3333)).into()
+            text(e.clone()).size(13).style(text::danger).into()
         } else {
-            text(self.stage_label()).size(13).color(MUTED).into()
+            text(self.stage_label())
+                .size(13)
+                .style(text::secondary)
+                .into()
         };
 
         let bar = progress_bar(0.0..=1.0, self.displayed)
@@ -203,7 +207,7 @@ impl Loading {
 impl Loaded {
     fn view(&self) -> Element<'_, Message> {
         let block = |label: &'static str, sample: Element<'static, Message>| {
-            column![text(label).size(12).color(MUTED), sample]
+            column![text(label).size(12).style(text::secondary), sample]
                 .spacing(8)
                 .align_x(Center)
         };
@@ -219,20 +223,11 @@ impl Loaded {
     }
 }
 
-const MUTED: Color = Color::from_rgb(0.55, 0.55, 0.58);
-
-fn bar_style(_theme: &iced::Theme) -> progress_bar::Style {
+fn bar_style(theme: &Theme) -> progress_bar::Style {
+    let palette = theme.palette();
     progress_bar::Style {
-        background: Background::Color(Color::from_rgb(
-            0xe5 as f32 / 255.0,
-            0xe5 as f32 / 255.0,
-            0xea as f32 / 255.0,
-        )),
-        bar: Background::Color(Color::from_rgb(
-            0x5e as f32 / 255.0,
-            0x8a as f32 / 255.0,
-            0xff as f32 / 255.0,
-        )),
+        background: Background::Color(palette.background.weak.color),
+        bar: Background::Color(palette.primary.base.color),
         border: border::rounded(3.0),
     }
 }
