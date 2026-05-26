@@ -52,6 +52,9 @@ pub struct Font {
     pub path: PathBuf,
     /// Index within a `.ttc` collection (0 for standalone files).
     pub index: u32,
+    /// Whether the face advertises itself as monospaced (post table's
+    /// `isFixedPitch`).
+    pub is_monospace: bool,
 }
 
 // OpenType name table IDs.
@@ -328,6 +331,7 @@ fn parse_font_file(path: &Path, index: u32, fonts: &mut Vec<Font>) {
             style,
             path: path.to_owned(),
             index,
+            is_monospace: face.is_monospaced(),
         });
     }
 }
@@ -355,6 +359,7 @@ fn parse_collection(path: &Path, fonts: &mut Vec<Font>) {
                 style,
                 path: path.to_owned(),
                 index: i,
+                is_monospace: face.is_monospaced(),
             });
         }
     }

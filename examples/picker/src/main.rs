@@ -1,21 +1,18 @@
 use std::time::Duration;
 
-use iced::widget::{column, combo_box, container, row, text};
+use iced::widget::{checkbox, column, combo_box, container, row, text};
 use iced::{Center, Element, Fill, Font, Subscription, Task, padding};
 
 const PREVIEW: &str = "The quick brown fox jumps over the lazy dog.";
 
-/// Braille-dot spinner frames. Each frame is default-rendered (not in the
-/// selected font) so it remains visible even while the target family is
-/// still being registered with cosmic-text.
+/// Frames are rendered in the default font so they stay visible while the
+/// selected family is still being registered with cosmic-text.
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 
-/// Width of the left-column slot that holds the spinner (and the mirrored
-/// right-column for symmetry). Every row reserves the same gutter so the
-/// preview text, font-name label, and combo_box all start at the same x.
+/// Reserved on every row so preview, status, and picker all start at the
+/// same x. The spinner only renders into the gutter on the status row.
 const GUTTER: u32 = 16;
-/// Gap between gutter and main content in each row.
 const ROW_GAP: u32 = 8;
 
 fn main() -> iced::Result {
@@ -32,7 +29,7 @@ enum App {
 
 #[derive(Default)]
 struct Loading {
-    /// Outer Option = "result has arrived"; inner Option = Some(catalog)
+    /// Outer Option = "result has arrived". Inner Option = Some(catalog)
     /// on success or None if the fetch failed.
     catalog: Option<Option<fount::Catalog>>,
     system_fonts: Option<Vec<fount::system::Font>>,
@@ -41,7 +38,6 @@ struct Loading {
 }
 
 impl Loading {
-    /// Still waiting on at least one source to finish fetching.
     fn is_fetching(&self) -> bool {
         self.catalog.is_none() || self.system_fonts.is_none()
     }
@@ -50,17 +46,44 @@ impl Loading {
 struct Picker {
     fount: fount::Fount,
     system_fonts: Vec<fount::system::Font>,
+    monospace_only: bool,
     font_list: combo_box::State<String>,
-    /// The family the user asked to see next. Set synchronously on
-    /// selection, *before* any load task completes.
+    /// What the user asked for, set synchronously on selection.
     selected: Option<String>,
-    /// The last family that finished loading (success or error). The
-    /// picker is "loading" exactly when `selected != loaded` — once the
-    /// first load task for the current selection reports back, cosmic-text
-    /// can render the family, and we stop the spinner.
+    /// What cosmic-text has registered. The picker is "loading" exactly
+    /// when `selected != loaded`.
     loaded: Option<String>,
     spinner_frame: usize,
     error: Option<String>,
+}
+
+fn family_list(
+    system_fonts: &[fount::system::Font],
+    catalog: Option<&fount::Catalog>,
+    monospace_only: bool,
+) -> Vec<String> {
+    let mut names: Vec<String> = system_fonts
+        .iter()
+        .filter(|f| !monospace_only || f.is_monospace)
+        .map(|f| f.family.clone())
+        .collect();
+    if let Some(catalog) = catalog {
+        if monospace_only {
+            names.extend(
+                catalog
+                    .families()
+                    .iter()
+                    .filter(|f| f.category == fount::google::Category::Monospace)
+                    .take(200)
+                    .map(|f| f.name.clone()),
+            );
+        } else {
+            names.extend(catalog.top(200));
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +92,7 @@ enum Message {
     SystemDiscovered(Vec<fount::system::Font>),
     FontSelected(String),
     FontLoaded(String, Result<(), String>),
+    MonospaceOnlyToggled(bool),
     Tick,
 }
 
@@ -85,8 +109,7 @@ impl App {
         ))
         .map(Message::CatalogLoaded);
 
-        // Discover system fonts (and Office-bundled fonts via the `office`
-        // feature) on a blocking thread so we don't stall the runtime.
+        // Discovery is blocking I/O. Keep it off the runtime thread.
         let system_task = Task::future(async {
             tokio::task::spawn_blocking(|| {
                 fount::system::discover(&fount::system::Config::default())
@@ -111,8 +134,7 @@ impl App {
                     }
                     Message::CatalogLoaded(Err(e)) => {
                         loading.error = Some(format!("Catalog: {e}"));
-                        // Treat catalog failure as "no catalog" so we still
-                        // make progress with whatever system fonts we found.
+                        // Keep going with whatever system fonts we found.
                         loading.catalog = Some(None);
                     }
                     Message::SystemDiscovered(fonts) => {
@@ -121,12 +143,12 @@ impl App {
                     Message::Tick => {
                         loading.spinner_frame = loading.spinner_frame.wrapping_add(1);
                     }
-                    // Ignore late selection/load messages while still
-                    // loading — the picker isn't on screen yet.
-                    Message::FontSelected(_) | Message::FontLoaded(_, _) => {}
+                    // Picker-only messages can't fire while still loading.
+                    Message::FontSelected(_)
+                    | Message::FontLoaded(_, _)
+                    | Message::MonospaceOnlyToggled(_) => {}
                 }
 
-                // Both data sources in? Build the picker and switch states.
                 if loading.catalog.is_some() && loading.system_fonts.is_some() {
                     let catalog = loading.catalog.take().unwrap();
                     let system_fonts = loading.system_fonts.take().unwrap();
@@ -213,18 +235,14 @@ impl Picker {
             fount.set_google_catalog(catalog);
         }
 
-        // Build the merged family list once, up front.
-        let mut names: Vec<String> = fount.system_families().to_vec();
-        if let Some(catalog) = fount.google_catalog() {
-            names.extend(catalog.top(200));
-        }
-        names.sort();
-        names.dedup();
+        let font_list =
+            combo_box::State::new(family_list(&system_fonts, fount.google_catalog(), false));
 
         Self {
             fount,
             system_fonts,
-            font_list: combo_box::State::new(names),
+            monospace_only: false,
+            font_list,
             selected: None,
             loaded: None,
             spinner_frame: 0,
@@ -247,8 +265,8 @@ impl Picker {
                 self.error = None;
 
                 // Prefer system fonts (already on disk) over Google downloads.
-                // Load *all* faces for the family, not just the first one —
-                // otherwise the only registered weight may be (e.g.) Black,
+                // Load *all* faces for the family, not just the first one.
+                // Otherwise the only registered weight may be (e.g.) Black,
                 // and cosmic-text can't match the default weight=400 render.
                 let faces: Vec<fount::system::Font> = self
                     .system_fonts
@@ -303,8 +321,8 @@ impl Picker {
                     })
             }
             Message::FontLoaded(name, result) => {
-                // Only pay attention to loads for the *current* selection —
-                // late messages from a previous selection must not flip our
+                // Only pay attention to loads for the *current* selection.
+                // Late messages from a previous selection must not flip our
                 // loading state or overwrite an error for the current one.
                 if self.selected.as_deref() == Some(name.as_str()) {
                     self.loaded = Some(name.clone());
@@ -316,6 +334,15 @@ impl Picker {
             }
             Message::Tick => {
                 self.spinner_frame = self.spinner_frame.wrapping_add(1);
+                Task::none()
+            }
+            Message::MonospaceOnlyToggled(value) => {
+                self.monospace_only = value;
+                self.font_list = combo_box::State::new(family_list(
+                    &self.system_fonts,
+                    self.fount.google_catalog(),
+                    value,
+                ));
                 Task::none()
             }
             // Loading-phase messages can't reach a Loaded picker.
@@ -377,7 +404,7 @@ impl Picker {
         .width(Fill);
 
         // Each row: [left gutter] [gap] [main content, fills] [gap] [right gutter].
-        // The left gutter only shows the spinner on the status row — for
+        // The left gutter only shows the spinner on the status row. For
         // preview and picker it's empty, but reserved so all three items
         // line up at the same x. The right gutter mirrors for symmetry.
         let empty_gutter = || container(text("")).width(GUTTER);
@@ -401,8 +428,18 @@ impl Picker {
             .spacing(ROW_GAP)
             .align_y(Center);
 
+        let monospace_toggle = checkbox(self.monospace_only)
+            .label("Monospace only")
+            .on_toggle(Message::MonospaceOnlyToggled)
+            .size(14)
+            .text_size(13);
+
+        let filters_row = row![empty_gutter(), monospace_toggle, empty_gutter(),]
+            .spacing(ROW_GAP)
+            .align_y(Center);
+
         container(
-            column![preview_row, status_row, picker_row]
+            column![preview_row, status_row, filters_row, picker_row]
                 .spacing(12)
                 .max_width(600),
         )

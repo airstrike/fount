@@ -66,12 +66,17 @@ pub enum Category {
 
 impl Category {
     pub(crate) fn from_metadata(s: &str) -> Self {
+        // The metadata endpoint emits title-case strings like "Sans Serif"
+        // and "Monospace"; the legacy Web API used SCREAMING_SNAKE_CASE
+        // ("SANS_SERIF", "MONOSPACE"). Accept both so the parser doesn't
+        // silently bucket every family into SansSerif when the upstream
+        // string casing flips.
         match s {
-            "SANS_SERIF" => Self::SansSerif,
-            "SERIF" => Self::Serif,
-            "DISPLAY" => Self::Display,
-            "HANDWRITING" => Self::Handwriting,
-            "MONOSPACE" => Self::Monospace,
+            "SANS_SERIF" | "Sans Serif" => Self::SansSerif,
+            "SERIF" | "Serif" => Self::Serif,
+            "DISPLAY" | "Display" => Self::Display,
+            "HANDWRITING" | "Handwriting" => Self::Handwriting,
+            "MONOSPACE" | "Monospace" => Self::Monospace,
             _ => Self::SansSerif,
         }
     }
