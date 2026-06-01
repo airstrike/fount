@@ -9,11 +9,13 @@
 
 pub mod config;
 pub mod error;
+#[cfg(feature = "google")]
 pub mod google;
 pub mod system;
 
 pub use config::Config;
 pub use error::Error;
+#[cfg(feature = "google")]
 pub use google::Catalog;
 
 use iced_core::Font;
@@ -22,6 +24,7 @@ use iced_core::Font;
 /// provides a unified API for resolving and loading fonts.
 #[derive(Debug, Default)]
 pub struct Fount {
+    #[cfg(feature = "google")]
     google_catalog: Option<google::Catalog>,
     system_families: Vec<String>,
 }
@@ -43,11 +46,13 @@ impl Fount {
     // --- Google Fonts ---
 
     /// Store the Google Fonts catalog once fetched.
+    #[cfg(feature = "google")]
     pub fn set_google_catalog(&mut self, catalog: google::Catalog) {
         self.google_catalog = Some(catalog);
     }
 
     /// The Google Fonts catalog, if loaded.
+    #[cfg(feature = "google")]
     pub fn google_catalog(&self) -> Option<&google::Catalog> {
         self.google_catalog.as_ref()
     }
@@ -69,6 +74,7 @@ impl Fount {
     /// All known family names from every source, deduplicated and sorted.
     pub fn families(&self) -> Vec<String> {
         let mut names: Vec<String> = self.system_families.clone();
+        #[cfg(feature = "google")]
         if let Some(catalog) = &self.google_catalog {
             names.extend(catalog.family_names());
         }
@@ -79,11 +85,18 @@ impl Fount {
 
     /// Whether a family name is known to any source.
     pub fn has_family(&self, name: &str) -> bool {
-        self.system_families.iter().any(|n| n == name)
-            || self
-                .google_catalog
-                .as_ref()
-                .is_some_and(|c| c.get(name).is_some())
+        if self.system_families.iter().any(|n| n == name) {
+            return true;
+        }
+        #[cfg(feature = "google")]
+        if self
+            .google_catalog
+            .as_ref()
+            .is_some_and(|c| c.get(name).is_some())
+        {
+            return true;
+        }
+        false
     }
 }
 

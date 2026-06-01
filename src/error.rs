@@ -20,12 +20,14 @@ pub enum Error {
     NoFontUrls { family: String },
 }
 
+#[cfg(feature = "google")]
 impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {
         Self::Http(e.to_string())
     }
 }
 
+#[cfg(feature = "google")]
 impl From<serde_json::Error> for Error {
     fn from(e: serde_json::Error) -> Self {
         Self::Json(e.to_string())

@@ -3,6 +3,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::Error;
+#[cfg(feature = "google")]
 use crate::google;
 use crate::system;
 
@@ -11,6 +12,7 @@ use crate::system;
 #[serde(default)]
 pub struct Config {
     pub system: system::Config,
+    #[cfg(feature = "google")]
     pub google: google::Config,
     #[serde(default)]
     pub custom: Vec<Custom>,
@@ -41,6 +43,7 @@ mod tests {
     fn default_config_loads_nothing() {
         let config: Config = toml::from_str("").unwrap();
         assert!(config.system.include.is_empty());
+        #[cfg(feature = "google")]
         assert!(!config.google.enabled);
         assert!(config.custom.is_empty());
     }
@@ -65,8 +68,11 @@ variants = ["400", "700"]
         let config: Config = toml::from_str(toml).unwrap();
         assert_eq!(config.system.include.len(), 2);
         assert_eq!(config.system.exclude, vec!["Apple Symbols"]);
-        assert_eq!(config.google.preload, vec!["Inter", "IBM Plex Sans"]);
-        assert_eq!(config.google.catalog_limit, 50);
+        #[cfg(feature = "google")]
+        {
+            assert_eq!(config.google.preload, vec!["Inter", "IBM Plex Sans"]);
+            assert_eq!(config.google.catalog_limit, 50);
+        }
         assert_eq!(config.custom.len(), 1);
         assert_eq!(config.custom[0].name, "My Font");
     }
