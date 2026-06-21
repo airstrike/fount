@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use iced::widget::{column, combo_box, container, row, text};
-use iced::{Center, Element, Fill, Font, Subscription, Task, padding};
+use iced::{Center, Element, Fill, Font, Length, Subscription, Task, padding};
 
 const PREVIEW: &str = "The quick brown fox jumps over the lazy dog.";
 
@@ -190,7 +190,7 @@ impl App {
                     col = col.push(text(e).size(12).color(iced::color!(0xcc3333)));
                 }
 
-                container(col.max_width(600))
+                container(col.width(Length::Fill.max(600)))
                     .width(Fill)
                     .align_x(Center)
                     .padding(padding::all(24).top(48))
@@ -404,7 +404,7 @@ impl Picker {
         container(
             column![preview_row, status_row, picker_row]
                 .spacing(12)
-                .max_width(600),
+                .width(Length::Fill.max(600)),
         )
         .width(Fill)
         .align_x(Center)

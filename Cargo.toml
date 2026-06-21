@@ -28,8 +28,8 @@ tracing = "0.1"
 ttf-parser = "0.25"
 
 [patch.crates-io]
-iced = { git = "https://github.com/airstrike/iced", branch = "markright" }
-iced_core = { git = "https://github.com/airstrike/iced", branch = "markright" }
+iced = { git = "https://github.com/airstrike/iced", branch = "dev" }
+iced_core = { git = "https://github.com/airstrike/iced", branch = "dev" }
 cosmic-text = { git = "https://github.com/airstrike/cosmic-text", branch = "dev" }
 
 [dev-dependencies]
