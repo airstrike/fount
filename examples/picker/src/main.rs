@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use iced::widget::{checkbox, column, combo_box, container, row, text};
-use iced::{Center, Element, Fill, Font, Subscription, Task, padding};
+use iced::widget::{Widget, checkbox, column, combo_box, container, row, text};
+use iced::{Center, Element, Fill, Font, Shrink, Subscription, Task, padding};
 
 const PREVIEW: &str = "The quick brown fox jumps over the lazy dog.";
 
@@ -190,7 +190,7 @@ impl App {
                         let label = if done { done_label } else { pending_label };
                         row![text(marker).size(13), text(label.to_string()).size(13)]
                             .spacing(8)
-                            .into()
+                            .boxed()
                     };
 
                 let steps = column![
@@ -209,14 +209,14 @@ impl App {
 
                 let mut col = column![title, steps].spacing(20);
                 if let Some(ref e) = loading.error {
-                    col = col.push(text(e).size(12).color(iced::color!(0xcc3333)));
+                    col = col.push(text(e).size(12).color(iced::color!(0xcc3333)).boxed());
                 }
 
-                container(col.max_width(600))
+                container(col.width(Shrink.max(600)))
                     .width(Fill)
                     .align_x(Center)
                     .padding(padding::all(24).top(48))
-                    .into()
+                    .boxed()
             }
             App::Loaded(picker) => picker.view(),
         }
@@ -356,9 +356,9 @@ impl Picker {
             text(PREVIEW)
                 .font(Font::with_family(name.as_str()))
                 .size(24)
-                .into()
+                .boxed()
         } else {
-            text("Select a font below to preview it.").size(16).into()
+            text("Select a font below to preview it.").size(16).boxed()
         };
         let preview_content = container(preview_text)
             .height(80)
@@ -368,26 +368,26 @@ impl Picker {
         // --- status (spinner in the left gutter; stable-position name) ---
         let spinner_content: Element<'_, Message> = if self.is_loading() {
             let frame = SPINNER_FRAMES[self.spinner_frame % SPINNER_FRAMES.len()];
-            text(frame).size(14).into()
+            text(frame).size(14).boxed()
         } else {
-            text("").size(14).into()
+            text("").size(14).boxed()
         };
         let status_text: Element<'_, Message> = if let Some(ref e) = self.error {
-            text(e).size(12).color(iced::color!(0xcc3333)).into()
+            text(e).size(12).color(iced::color!(0xcc3333)).boxed()
         } else if let Some(ref name) = self.selected {
             let label = if self.is_loading() {
                 format!("{name} loading…")
             } else {
                 name.clone()
             };
-            text(label).size(12).into()
+            text(label).size(12).boxed()
         } else {
             text(format!(
                 "{} fonts available",
                 self.font_list.options().len()
             ))
             .size(12)
-            .into()
+            .boxed()
         };
         let status_content = container(status_text)
             .height(28)
@@ -441,11 +441,11 @@ impl Picker {
         container(
             column![preview_row, status_row, filters_row, picker_row]
                 .spacing(12)
-                .max_width(600),
+                .width(Shrink.max(600)),
         )
         .width(Fill)
         .align_x(Center)
         .padding(padding::all(24).top(48))
-        .into()
+        .boxed()
     }
 }

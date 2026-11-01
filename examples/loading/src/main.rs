@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use iced::widget::{center, column, progress_bar, text};
+use iced::widget::{Widget, center, column, progress_bar, text};
 use iced::{Background, Center, Element, Font, Subscription, Task, Theme, border};
 
 const INTER_REGULAR: &[u8] = include_bytes!("../assets/Inter-Regular.ttf");
@@ -32,8 +32,8 @@ fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
         .subscription(App::subscription)
         .title("fount – loading example")
-        .default_font(Font::new(LOCAL_FAMILY))
-        .font(INTER_REGULAR)
+        .font(Font::new(LOCAL_FAMILY))
+        .fonts([INTER_REGULAR])
         .run()
 }
 
@@ -179,12 +179,12 @@ impl Loading {
         let title = text("Loading").size(32);
 
         let status: Element<'_, Message> = if let Some(ref e) = self.error {
-            text(e.clone()).size(13).style(text::danger).into()
+            text(e.clone()).size(13).style(text::danger).boxed()
         } else {
             text(self.stage_label())
                 .size(13)
                 .style(text::secondary)
-                .into()
+                .boxed()
         };
 
         let bar = progress_bar(0.0..=1.0, self.displayed)
@@ -200,7 +200,7 @@ impl Loading {
         .spacing(16)
         .align_x(Center);
 
-        center(body).into()
+        center(body).boxed()
     }
 }
 
@@ -212,14 +212,14 @@ impl Loaded {
                 .align_x(Center)
         };
 
-        let inter = block("Inter  ·  bundled locally", text(PREVIEW).size(30).into());
+        let inter = block("Inter  ·  bundled locally", text(PREVIEW).size(30).boxed());
 
         let playfair = block(
             "Playfair Display  ·  loaded from Google Fonts",
-            text(PREVIEW).font(REMOTE_FAMILY).size(30).into(),
+            text(PREVIEW).font(REMOTE_FAMILY).size(30).boxed(),
         );
 
-        center(column![inter, playfair].spacing(40).align_x(Center)).into()
+        center(column![inter, playfair].spacing(40).align_x(Center)).boxed()
     }
 }
 

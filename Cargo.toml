@@ -32,8 +32,8 @@ tracing = "0.1"
 ttf-parser = "0.25"
 
 [patch.crates-io]
-iced = { git = "https://github.com/iced-rs/iced", branch = "master" }
-iced_core = { git = "https://github.com/iced-rs/iced", branch = "master" }
+iced = { git = "https://github.com/iced-rs/iced", rev = "be88873d38544455e26c7a104eb757da2cbbac6b" }
+iced_core = { git = "https://github.com/iced-rs/iced", rev = "be88873d38544455e26c7a104eb757da2cbbac6b" }
 
 [dev-dependencies]
 tempfile = "3.27.0"
