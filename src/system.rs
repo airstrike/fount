@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use tokio::fs;
 
 /// System font discovery settings.
 ///
@@ -12,11 +13,12 @@ use serde::Deserialize;
 /// To customize, build from `Default`:
 ///
 /// ```no_run
-/// let mut cfg = fount::system::Config::default();
+/// use fount::system;
+/// let mut cfg = system::Config::default();
 /// cfg.dirs.push("/my/extra/font/dir".into());         // add
 /// cfg.dirs = vec!["/only/scan/this".into()];          // replace
 /// cfg.exclude.push("Comic Sans MS".into());           // filter
-/// fount::system::discover(&cfg);
+/// system::discover(&cfg);
 /// ```
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -236,7 +238,7 @@ pub fn default_dirs() -> Vec<PathBuf> {
 /// Discover system fonts, filtered by the given configuration.
 ///
 /// This is a blocking operation (directory traversal + font parsing).
-/// Wrap in `tokio::task::spawn_blocking` if calling from async context.
+/// Run discovery on a blocking task when calling from an async context.
 pub fn discover(config: &Config) -> Vec<Font> {
     let allowlist: Vec<&str> = if config.include.is_empty() {
         #[cfg(target_os = "macos")]
@@ -278,7 +280,7 @@ pub fn discover(config: &Config) -> Vec<Font> {
 
 /// Load the raw bytes of a system font file.
 pub async fn load(font: &Font) -> Result<Vec<u8>, crate::Error> {
-    Ok(tokio::fs::read(&font.path).await?)
+    Ok(fs::read(&font.path).await?)
 }
 
 /// List just the unique family names from a set of discovered fonts.

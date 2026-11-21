@@ -18,7 +18,13 @@ fn client() -> reqwest::Client {
 
 /// Fetch the full catalog metadata JSON from Google Fonts.
 pub(crate) async fn metadata() -> Result<String, Error> {
-    let text = client().get(METADATA_URL).send().await?.text().await?;
+    let text = client()
+        .get(METADATA_URL)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
     // The endpoint may prefix the JSON with ")]}'\n" as XSS protection.
     let json = text
         .strip_prefix(")]}'")
@@ -31,12 +37,24 @@ pub(crate) async fn metadata() -> Result<String, Error> {
 pub(crate) async fn css<V: AsRef<str>>(family: &str, variants: &[V]) -> Result<String, Error> {
     let url = super::css::build_url(family, variants);
     tracing::debug!("fetching CSS: {url}");
-    let text = client().get(&url).send().await?.text().await?;
+    let text = client()
+        .get(&url)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
     Ok(text)
 }
 
 /// Download raw bytes from a URL (typically a font file on fonts.gstatic.com).
 pub(crate) async fn bytes(url: &str) -> Result<Vec<u8>, Error> {
-    let data = client().get(url).send().await?.bytes().await?;
+    let data = client()
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
     Ok(data.to_vec())
 }

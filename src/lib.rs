@@ -3,16 +3,18 @@
 //! Supports multiple font sources — system fonts, Google Fonts, and custom
 //! URLs — configured via a `fonts.toml` file or programmatic API.
 //!
-//! All loading is async. [`Fount::load`] returns an iced [`Task`] that
-//! downloads (or reads from disk), caches, and registers each font file
-//! with iced's font system as it becomes available.
+//! Google downloads are async and return font bytes. The icedcn `fount` module
+//! supplies iced tasks that register those bytes with the renderer.
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod config;
 pub mod error;
 #[cfg(feature = "google")]
 pub mod google;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod system;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub use config::Config;
 pub use error::Error;
 #[cfg(feature = "google")]
@@ -30,6 +32,7 @@ pub struct Fount {
 }
 
 impl Fount {
+    /// Create an empty font collection, ready for discovery results.
     pub fn new() -> Self {
         Self::default()
     }
@@ -37,7 +40,7 @@ impl Fount {
     /// Get a [`Font`] descriptor for the given family name.
     ///
     /// This does not load the font — it only creates a descriptor that
-    /// iced will resolve when rendering. Call [`load`](Self::load) to
+    /// iced will resolve when rendering. Call [`google::load`] to
     /// ensure the font bytes are available.
     pub fn font(&self, name: &str) -> Font {
         Font::with_family(name)
@@ -83,6 +86,18 @@ impl Fount {
         names
     }
 
+    /// Search every known family, matching all query words without case sensitivity.
+    pub fn search(&self, query: impl AsRef<str>) -> Vec<String> {
+        let query = query.as_ref().to_lowercase();
+        self.families()
+            .into_iter()
+            .filter(|name| {
+                let name = name.to_lowercase();
+                query.split_whitespace().all(|word| name.contains(word))
+            })
+            .collect()
+    }
+
     /// Whether a family name is known to any source.
     pub fn has_family(&self, name: &str) -> bool {
         if self.system_families.iter().any(|n| n == name) {
@@ -126,6 +141,17 @@ mod tests {
         f.set_system_families(vec!["Menlo".into(), "Helvetica".into()]);
         let names = f.families();
         assert_eq!(names, vec!["Helvetica", "Menlo"]);
+    }
+
+    #[test]
+    #[cfg(feature = "google")]
+    fn search_includes_google_families_not_installed_locally() {
+        let mut f = Fount::new();
+        f.set_system_families(vec!["Menlo".into()]);
+        f.set_google_catalog(google::snapshot().expect("valid bundled metadata"));
+        assert!(f.search("edu hand").contains(&"Edu SA Hand".to_owned()));
+        assert_eq!(f.search("MENLO"), vec!["Menlo"]);
+        assert!(f.search("does-not-exist").is_empty());
     }
 
     #[test]

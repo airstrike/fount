@@ -6,9 +6,14 @@
 pub mod catalog;
 pub mod family;
 
+#[cfg(not(target_arch = "wasm32"))]
 mod cache;
+#[cfg(any(not(target_arch = "wasm32"), test))]
 pub(crate) mod css;
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod fetch;
+#[cfg(any(target_arch = "wasm32", test))]
+mod web;
 
 pub use catalog::Catalog;
 pub use family::{Axis, Category, Family, Variants};
@@ -44,10 +49,37 @@ impl Default for Config {
 /// Default max age for cached catalog metadata (7 days).
 pub const DEFAULT_CATALOG_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
-/// Fetch the Google Fonts catalog, using a disk cache with the given max age.
+/// Fetch the native catalog with a disk cache, or use the bundled web snapshot.
+/// Network/cache failures fall back to the complete bundled catalog. Bundled
+/// families missing from a valid older cache are added without replacing its entries.
 pub async fn catalog(max_age: Duration) -> Result<Catalog, Error> {
-    let raw = cache::load_or_fetch_metadata(max_age).await?;
-    catalog::parse(&raw)
+    let bundled = snapshot()?;
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        match cache::load_or_fetch_metadata(max_age)
+            .await
+            .and_then(|raw| catalog::parse(&raw))
+        {
+            Ok(mut catalog) => {
+                catalog.supplement(&bundled);
+                return Ok(catalog);
+            }
+            Err(error) => tracing::warn!("using bundled Google Fonts catalog: {error}"),
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    let _ = max_age;
+    Ok(bundled)
+}
+
+/// The complete Google Fonts snapshot bundled with this version of fount.
+///
+/// Browser builds use this catalog because Google's live metadata endpoint does
+/// not permit cross-origin reads. Native builds fall back to it when offline.
+/// The snapshot's date and source revision are recorded in `data/provenance.json`;
+/// maintainers refresh it with `scripts/sync-google-fonts.py` in the icedcn repo.
+pub fn snapshot() -> Result<Catalog, Error> {
+    catalog::parse(include_str!("../data/metadata.json"))
 }
 
 /// Load a font family, using the catalog to determine available variants.
@@ -59,7 +91,7 @@ pub async fn catalog(max_age: Duration) -> Result<Catalog, Error> {
 /// Without a catalog, falls back to common variants (400, 700, 400i, 700i).
 ///
 /// Returns raw font file bytes for each variant. The caller is responsible
-/// for registering them with iced via `iced::font::load()`.
+/// for registering them with iced through its font-loading task.
 pub async fn load(family: &str, catalog: Option<&Catalog>) -> Result<Vec<Vec<u8>>, Error> {
     let variants = catalog
         .and_then(|c| c.get(family))
@@ -75,12 +107,23 @@ pub async fn load(family: &str, catalog: Option<&Catalog>) -> Result<Vec<Vec<u8>
 ///
 /// Returns raw font file bytes. The caller registers them with iced.
 ///
-/// Accepts any string-like types for family and variants.
+/// Accepts string-like variants. Browser builds load every available face in
+/// the family, including the requested weights and styles.
 pub async fn load_variants<V: AsRef<str>>(
     family: &str,
     variants: &[V],
 ) -> Result<Vec<Vec<u8>>, Error> {
-    cache::load_or_fetch_fonts(family, variants).await
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        cache::load_or_fetch_fonts(family, variants).await
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Browser sources are full TrueType files; load the whole family so
+        // variable weights and italic faces remain available to iced.
+        let _ = variants;
+        web::load(family).await
+    }
 }
 
 /// Check if a variable-range font file in the cache covers the requested variant.
@@ -120,6 +163,7 @@ fn find_variable_cache(cache_dir: &std::path::Path, variant: &str) -> Option<Vec
 }
 
 /// Parse a variant key like `"400"` → (400, false) or `"700i"` → (700, true).
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn parse_variant(variant: &str) -> (u16, bool) {
     if let Some(w) = variant.strip_suffix('i') {
         (w.parse().unwrap_or(400), true)
@@ -129,6 +173,7 @@ pub(crate) fn parse_variant(variant: &str) -> (u16, bool) {
 }
 
 /// Parse a weight range like `"100..900"` → Some((100, 900)).
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn parse_weight_range(s: &str) -> Option<(u16, u16)> {
     let (min, max) = s.split_once("..")?;
     Some((min.parse().ok()?, max.parse().ok()?))

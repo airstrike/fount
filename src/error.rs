@@ -1,6 +1,15 @@
 /// Errors that can occur during font operations.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum Error {
+    #[error("font registration failed: {0}")]
+    Font(String),
+
+    #[error("font family is absent from the bundled catalog: {family}")]
+    UnknownFamily { family: String },
+
+    #[error("downloaded data is not a TrueType or OpenType font: {family}")]
+    InvalidFont { family: String },
+
     #[error("HTTP request failed: {0}")]
     Http(String),
 
@@ -40,6 +49,7 @@ impl From<std::io::Error> for Error {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl From<toml::de::Error> for Error {
     fn from(e: toml::de::Error) -> Self {
         Self::Config(e.to_string())

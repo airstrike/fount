@@ -1,3 +1,5 @@
+#[cfg(any(not(target_arch = "wasm32"), test))]
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use serde::Deserialize;
@@ -12,6 +14,21 @@ pub struct Catalog {
 }
 
 impl Catalog {
+    /// Add bundled families absent from the current live or cached catalog.
+    #[cfg(any(not(target_arch = "wasm32"), test))]
+    pub(crate) fn supplement(&mut self, fallback: &Self) {
+        let mut names: HashSet<String> = self.family_names().into_iter().collect();
+        let families = Arc::make_mut(&mut self.families);
+        families.extend(
+            fallback
+                .families()
+                .iter()
+                .filter(|family| names.insert(family.name.clone()))
+                .cloned(),
+        );
+        families.sort_by_key(|family| family.popularity);
+    }
+
     /// All families, sorted by popularity (most popular first).
     pub fn families(&self) -> &[Family] {
         &self.families
@@ -171,6 +188,33 @@ mod tests {
             }
         ]
     }"#;
+
+    #[test]
+    fn older_cache_gains_snapshot_families_without_replacing_existing_metadata() {
+        let mut cached = parse(
+            r#"{
+            "familyMetadataList": [
+                {"family":"Roboto", "popularity":0, "fonts":{"400":{}}},
+                {"family":"A New Live Family", "popularity":1, "fonts":{"700":{}}}
+            ]
+        }"#,
+        )
+        .unwrap();
+        let bundled = crate::google::snapshot().unwrap();
+        cached.supplement(&bundled);
+        assert_eq!(cached.len(), bundled.len() + 1);
+        assert!(cached.get("Edu SA Hand").is_some());
+        assert!(cached.get("A New Live Family").is_some());
+        assert_eq!(cached.get("Roboto").unwrap().variant_keys(), vec!["400"]);
+        assert!(
+            cached
+                .families()
+                .windows(2)
+                .all(|pair| pair[0].popularity <= pair[1].popularity)
+        );
+        cached.supplement(&bundled);
+        assert_eq!(cached.len(), bundled.len() + 1);
+    }
 
     #[test]
     fn parse_sorts_by_popularity() {
