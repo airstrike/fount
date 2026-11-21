@@ -7,8 +7,9 @@
 
 use std::time::Duration;
 
+use iced::time::Instant;
 use iced::widget::{Widget, center, column, progress_bar, text};
-use iced::{Background, Center, Element, Font, Subscription, Task, Theme, border};
+use iced::{Background, Center, Element, Font, Subscription, Task, Theme, border, window};
 
 const INTER_REGULAR: &[u8] = include_bytes!("../assets/Inter-Regular.ttf");
 
@@ -16,11 +17,12 @@ const LOCAL_FAMILY: &str = "Inter";
 const REMOTE_FAMILY: &str = "Playfair Display";
 const PREVIEW: &str = "The quick brown fox jumps over the lazy dog.";
 
-const TICK_INTERVAL: Duration = Duration::from_millis(16);
-/// Per-tick easing factor for the displayed progress value. ~0.15 lerps to
-/// within 1% of the target in ~25 frames (~0.4s), which feels lively without
+/// The displayed progress value closes `EASE` of its remaining distance to the
+/// target every `EASE_STEP` of elapsed time, independent of the frame rate.
+/// That reaches within 1% of the target in ~0.4s, which feels lively without
 /// looking instantaneous.
 const EASE: f32 = 0.15;
+const EASE_STEP: Duration = Duration::from_millis(16);
 
 /// Progress targets per stage. The bar caps below 100% until *all* downloaded
 /// variants have been registered with iced — only then does it finish.
@@ -49,8 +51,10 @@ struct Loading {
     pending_registers: Option<usize>,
     error: Option<String>,
     /// Smoothly-animated progress in `0.0..=1.0`. Eases toward the current
-    /// stage target each tick.
+    /// stage target on each frame.
     displayed: f32,
+    /// When the previous frame was drawn, to measure elapsed time.
+    last_frame: Option<Instant>,
 }
 
 impl Loading {
@@ -89,7 +93,7 @@ enum Message {
     CatalogLoaded(Result<fount::Catalog, String>),
     FontDownloaded(Result<Vec<Vec<u8>>, String>),
     FontRegistered(Result<(), String>),
-    Tick,
+    Frame(Instant),
 }
 
 impl App {
@@ -116,7 +120,7 @@ impl App {
 
     fn subscription(&self) -> Subscription<Message> {
         match self {
-            App::Loading(_) => iced::time::every(TICK_INTERVAL).map(|_| Message::Tick),
+            App::Loading(_) => window::frames().map(Message::Frame),
             App::Loaded(_) => Subscription::none(),
         }
     }
@@ -167,9 +171,15 @@ impl Loading {
                 }
                 Task::none()
             }
-            Message::Tick => {
+            Message::Frame(now) => {
+                let elapsed = self
+                    .last_frame
+                    .map_or(Duration::ZERO, |last| now.saturating_duration_since(last));
+                self.last_frame = Some(now);
+                let steps = elapsed.as_secs_f32() / EASE_STEP.as_secs_f32();
+                let ease = 1.0 - (1.0 - EASE).powf(steps);
                 let target = self.stage_target();
-                self.displayed += (target - self.displayed) * EASE;
+                self.displayed += (target - self.displayed) * ease;
                 Task::none()
             }
         }

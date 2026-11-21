@@ -6,4 +6,4 @@ publish = false
 
 [dependencies]
 fount = { path = "../.." }
-iced = { version = "0.15.0-dev", features = ["smol"] }
+iced = "0.15.0-dev"

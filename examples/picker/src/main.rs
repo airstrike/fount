@@ -1,7 +1,8 @@
 use std::time::Duration;
 
+use iced::time::Instant;
 use iced::widget::{Widget, checkbox, column, combo_box, container, row, text};
-use iced::{Center, Element, Fill, Font, Shrink, Subscription, Task, padding};
+use iced::{Center, Element, Fill, Font, Shrink, Subscription, Task, padding, window};
 
 const PREVIEW: &str = "The quick brown fox jumps over the lazy dog.";
 
@@ -9,6 +10,28 @@ const PREVIEW: &str = "The quick brown fox jumps over the lazy dog.";
 /// selected family is still being registered with cosmic-text.
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
+
+/// A spinner that advances one glyph per `SPINNER_INTERVAL` of elapsed time,
+/// however often frames arrive.
+#[derive(Default)]
+struct Spinner {
+    /// The first frame seen; the glyph is chosen from the time since then.
+    origin: Option<Instant>,
+    frame: usize,
+}
+
+impl Spinner {
+    fn advance(&mut self, now: Instant) {
+        let origin = *self.origin.get_or_insert(now);
+        let elapsed = now.saturating_duration_since(origin);
+        let frame = elapsed.as_millis() / SPINNER_INTERVAL.as_millis();
+        self.frame = usize::try_from(frame).unwrap_or(usize::MAX) % SPINNER_FRAMES.len();
+    }
+
+    fn glyph(&self) -> &'static str {
+        SPINNER_FRAMES[self.frame]
+    }
+}
 
 /// Reserved on every row so preview, status, and picker all start at the
 /// same x. The spinner only renders into the gutter on the status row.
@@ -34,7 +57,7 @@ struct Loading {
     catalog: Option<Option<fount::Catalog>>,
     system_fonts: Option<Vec<fount::system::Font>>,
     error: Option<String>,
-    spinner_frame: usize,
+    spinner: Spinner,
 }
 
 impl Loading {
@@ -53,7 +76,7 @@ struct Picker {
     /// What cosmic-text has registered. The picker is "loading" exactly
     /// when `selected != loaded`.
     loaded: Option<String>,
-    spinner_frame: usize,
+    spinner: Spinner,
     error: Option<String>,
 }
 
@@ -93,7 +116,7 @@ enum Message {
     FontSelected(String),
     FontLoaded(String, Result<(), String>),
     MonospaceOnlyToggled(bool),
-    Tick,
+    Frame(Instant),
 }
 
 impl Picker {
@@ -136,8 +159,8 @@ impl App {
                     Message::SystemDiscovered(fonts) => {
                         loading.system_fonts = Some(fonts);
                     }
-                    Message::Tick => {
-                        loading.spinner_frame = loading.spinner_frame.wrapping_add(1);
+                    Message::Frame(now) => {
+                        loading.spinner.advance(now);
                     }
                     // Picker-only messages can't fire while still loading.
                     Message::FontSelected(_)
@@ -164,7 +187,7 @@ impl App {
             App::Loaded(picker) => picker.is_loading(),
         };
         if animating {
-            iced::time::every(SPINNER_INTERVAL).map(|_| Message::Tick)
+            window::frames().map(Message::Frame)
         } else {
             Subscription::none()
         }
@@ -178,11 +201,11 @@ impl App {
                     ..Font::DEFAULT
                 });
 
-                let spinner_frame = SPINNER_FRAMES[loading.spinner_frame % SPINNER_FRAMES.len()];
+                let spinner = loading.spinner.glyph();
 
                 let step =
                     |done: bool, pending_label: &str, done_label: &str| -> Element<'_, Message> {
-                        let marker = if done { "✓" } else { spinner_frame };
+                        let marker = if done { "✓" } else { spinner };
                         let label = if done { done_label } else { pending_label };
                         row![text(marker).size(13), text(label.to_string()).size(13)]
                             .spacing(8)
@@ -241,7 +264,7 @@ impl Picker {
             font_list,
             selected: None,
             loaded: None,
-            spinner_frame: 0,
+            spinner: Spinner::default(),
             error,
         }
     }
@@ -328,8 +351,8 @@ impl Picker {
                 }
                 Task::none()
             }
-            Message::Tick => {
-                self.spinner_frame = self.spinner_frame.wrapping_add(1);
+            Message::Frame(now) => {
+                self.spinner.advance(now);
                 Task::none()
             }
             Message::MonospaceOnlyToggled(value) => {
@@ -363,7 +386,7 @@ impl Picker {
 
         // --- status (spinner in the left gutter; stable-position name) ---
         let spinner_content: Element<'_, Message> = if self.is_loading() {
-            let frame = SPINNER_FRAMES[self.spinner_frame % SPINNER_FRAMES.len()];
+            let frame = self.spinner.glyph();
             text(frame).size(14).boxed()
         } else {
             text("").size(14).boxed()

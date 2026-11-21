@@ -6,5 +6,5 @@ publish = false
 
 [dependencies]
 fount = { path = "../..", features = ["office"] }
-iced = { version = "0.15.0-dev", features = ["smol"] }
+iced = "0.15.0-dev"
 blocking = "1"
