@@ -1,57 +1,222 @@
-# Vendored fount
+<div align="center">
 
-Source: [airstrike/fount](https://github.com/airstrike/fount), revision
-`5bb7711197354b35160acdf0cb85862248a16e0f` (0.2.0).
-The upstream MIT license is preserved in [LICENSE](LICENSE).
+# fount
 
-icedcn enables this crate through its optional `fount` feature. The
-`icedcn::fount` module re-exports the provider and adds iced `Task` functions for
-catalog discovery and font registration. Font bytes are downloaded only when a
-family is selected; applications keep control of their chosen font.
+A font manager for [iced](https://github.com/iced-rs/iced) applications
 
-Local changes:
+[![Made with iced](https://iced.rs/badge.svg)](https://github.com/iced-rs/iced)
 
-- Native catalog requests retain fount's disk cache and fall back to the bundled
-  catalog when networking or cache access fails. A valid older cache is
-  supplemented with missing bundled families while retaining its existing
-  family metadata and any newer live-only entries.
-- Web builds use the same catalog model, search API, and error types. They read
-  the complete bundled catalog snapshot and download TrueType/OpenType files
-  from Google's font repository or `fonts.gstatic.com`, both of which permit
-  cross-origin reads. Google's live metadata endpoint does not permit browser
-  cross-origin reads, and its browser CSS responses use WOFF2, which iced's font
-  parser does not accept.
-- Native configuration/system discovery dependencies are compiled only on native
-  targets. Google metadata category names accept the current spelling as well
-  as upstream's older names. HTTP failures are checked before parsing.
-- `Fount::search` searches every known family. A UI may cap visible results after
-  filtering without limiting the searchable catalog.
+</div>
 
-## Catalog snapshot
+## Overview
 
-[data/provenance.json](data/provenance.json) records the refresh date, family
-count, and pinned Google Fonts repository revision. The 2026-11-15 snapshot
-contains all 1,961 families from Google's metadata response. Six families absent
-from the repository use official Google CSS-derived TrueType URLs. The refresh
-script checks their font signatures and CORS response headers.
+`fount` is a font manager for `iced` applications. It discovers system fonts,
+fetches families from Google Fonts on demand, and loads custom URL-hosted
+fonts — all unified behind a single `Fount` handle and configured from a
+`fonts.toml` file or built up programmatically.
 
-From the icedcn repository root, run:
+Loading is async and disk-cached. Google Fonts are fetched over the public
+CSS2 endpoint (no API key needed) and stored under `{cache_dir}/fount/google/`
+so subsequent runs are offline-friendly.
+
+Like iced, `fount` doesn't pick an executor for you. Its futures run under
+iced's thread pool, Tokio or smol: native disk and network I/O happen on the
+[`blocking`](https://crates.io/crates/blocking) thread pool, and web builds
+use the browser's `fetch`.
+
+> **Note:** `fount` tracks `iced` from git. It depends on `iced_core` 0.15.0-dev
+> and is not yet published to crates.io.
+
+## Installation
+
+Add `fount` as a git dependency:
+
+```toml
+[dependencies]
+fount = { git = "https://github.com/airstrike/fount" }
+```
+
+Enable the `office` feature on machines with Microsoft Office to also surface
+its bundled fonts (Aptos, Calibri, Cambria, …):
+
+```toml
+fount = { git = "https://github.com/airstrike/fount", features = ["office"] }
+```
+
+## Features
+
+### System font discovery
+
+Walks the platform's font directories, parses each TTF/OTF/TTC, and returns a
+deduped list of `(family, style, path)` records. macOS uses a curated allowlist
+by default (`MACOS_SANE_FONTS`) so menus aren't drowned in symbol fonts;
+Linux and Windows scan unfiltered.
+
+```rust
+let fonts = fount::system::discover(&fount::system::Config::default());
+for f in &fonts {
+    println!("{} {}", f.family, f.style);
+}
+```
+
+`discover` is blocking (directory traversal + font parsing). From async
+contexts, run it on a blocking thread, as the picker example does with
+`blocking::unblock`.
+
+### Google Fonts catalog and on-demand loading
+
+Fetch the full catalog (cached on disk for 7 days by default) and then load
+individual families by name:
+
+```rust
+use fount::google;
+
+let catalog = google::catalog(google::DEFAULT_CATALOG_MAX_AGE).await?;
+
+// Load just the variants this family actually publishes
+let bytes = google::load("Inter", Some(&catalog)).await?;
+
+// Or request specific weights/italics directly
+let bytes = google::load_variants("Inter", &["400", "700", "400i"]).await?;
+```
+
+Variant keys follow Google's CSS2 conventions: `"400"`, `"700"`, `"400i"`,
+`"700i"`, etc. Variable-range files (`100..900.ttf`) are detected in the cache
+so a request for `"400"` won't redownload when a `100..900.ttf` already covers
+it.
+
+`catalog` falls back to the bundled snapshot when the network or cache fails,
+and adds any bundled families missing from an older cache.
+
+### Web builds
+
+On `wasm32`, `catalog` returns the bundled snapshot, because Google's live
+metadata endpoint doesn't allow cross-origin reads. `load` downloads the whole
+family as TrueType or OpenType files from Google's font repository or
+`fonts.gstatic.com`, both of which do. (Google's browser CSS serves WOFF2,
+which iced can't parse.) System discovery and `fonts.toml` are native-only.
+
+### Catalog snapshot
+
+[`data/provenance.json`](data/provenance.json) records the snapshot's refresh
+date, family count and pinned Google Fonts repository revision. The 2026-11-15
+snapshot contains all 1,961 families in Google's metadata. Six families absent
+from the repository use official TrueType URLs from Google's CSS endpoint.
+Refresh it with:
 
 ```sh
 python3 scripts/sync-google-fonts.py
 ```
 
-The script fetches Google's current metadata and full repository tree, builds a
-complete index, and resolves any missing repository families through Google's
-CSS endpoint. It fails if a family lacks downloadable supported fonts; it does
-not silently omit families. No API key or custom server is required.
+The script fetches Google's current metadata and repository tree and checks
+each source's font signature and CORS headers. It fails rather than drop a
+family that has no downloadable supported font. The snapshot holds metadata
+and URLs only; font files keep their own upstream licenses.
 
-Web catalog discovery works offline from the snapshot. Downloading a family
-still requires network access unless the browser has cached its files. The web
-catalog updates with an icedcn release containing a refreshed snapshot; it is
-not advertised as a live catalog. Native catalog discovery normally refreshes
-Google's metadata after seven days.
+### Custom fonts from URLs
 
-Font files retain their individual upstream licenses. This package bundles
-catalog metadata and source URLs, not font binaries. Google repository fonts
-and their licenses are available at the revision recorded in provenance.
+Drop arbitrary font URLs into the config and they're fetched and cached the
+same way as Google Fonts.
+
+```toml
+[[custom]]
+name = "My Brand Font"
+url = "https://example.com/fonts/brand.ttf"
+variants = ["400", "700"]
+```
+
+### `fonts.toml` configuration
+
+A single TOML file declares system filtering, Google Fonts behavior, and
+custom font sources. See [`fonts.example.toml`](fonts.example.toml) for the
+full schema.
+
+```toml
+[system]
+include = ["Helvetica Neue", "Menlo", "SF Pro"]
+exclude = ["Apple Symbols"]
+
+[google]
+enabled = true
+preload = ["Inter"]
+catalog_limit = 100
+```
+
+### Office font support (opt-in)
+
+The `office` cargo feature adds Microsoft Office's private font directories
+(macOS `DFonts`, Windows `VFS\Fonts\private`) to the default scan list, which
+surfaces fonts that ship inside Office apps but not in the OS font folders —
+Aptos, Calibri, Cambria, Consolas, and friends. Only enable on machines with a
+valid Office license.
+
+There's also a Mac Roman name-table fallback in the parser so Aptos (which
+only carries Macintosh-platform name records) is decoded correctly instead of
+silently dropped.
+
+## Usage
+
+```rust
+use fount::Fount;
+
+let mut fount = Fount::new();
+
+// Populate from whichever sources you want
+fount.set_system_families(
+    fount::system::family_names(&fount::system::discover(&Default::default()))
+);
+fount.set_google_catalog(
+    fount::google::catalog(fount::google::DEFAULT_CATALOG_MAX_AGE).await?
+);
+
+// Unified queries across every source
+let all = fount.families();           // sorted, deduped
+assert!(fount.has_family("Inter"));
+
+// Get an iced Font descriptor (the bytes are loaded separately)
+let font = fount.font("Inter");
+```
+
+`Fount` itself is just an aggregator — it does not register fonts with iced
+on your behalf. Once you have raw bytes from `google::load`, `system::load`,
+or your own source, hand them to `iced::font::load()` and use the descriptor
+returned by `Fount::font` in your views.
+
+## Examples
+
+```bash
+cargo run -p picker                    # combo-box font picker, system + Google
+cargo run -p picker --features office  # also surface Office-bundled fonts
+```
+
+The picker example demonstrates the full loading flow: parallel system
+discovery and Google catalog fetch, async per-family registration, and a
+braille-dot spinner that runs while the renderer catches up to the user's
+selection.
+
+## Code Structure
+
+- `src/lib.rs` — the `Fount` aggregator and the unified family-query API
+- `src/config.rs` — `fonts.toml` schema and loader
+- `src/system.rs` — platform font directory scanning, OpenType name parsing,
+  curated macOS allowlist, optional Office paths
+- `src/google/` — catalog parsing, CSS2 fetcher, variant key handling, disk
+  cache, variable-range cache hits, browser sources
+- `data/` — the bundled Google Fonts catalog snapshot and its provenance
+- `src/error.rs` — the unified `Error` type
+
+## Contributing
+
+Contributions are welcome. Bug reports, feature ideas, and PRs all land in the
+same place — open an issue or PR on
+[GitHub](https://github.com/airstrike/fount).
+
+## License
+
+MIT
+
+## Acknowledgements
+
+- [iced](https://github.com/iced-rs/iced)
+- [Google Fonts](https://fonts.google.com/)
+- [Rust programming language](https://www.rust-lang.org/)

@@ -77,7 +77,7 @@ pub async fn catalog(max_age: Duration) -> Result<Catalog, Error> {
 /// Browser builds use this catalog because Google's live metadata endpoint does
 /// not permit cross-origin reads. Native builds fall back to it when offline.
 /// The snapshot's date and source revision are recorded in `data/provenance.json`;
-/// maintainers refresh it with `scripts/sync-google-fonts.py` in the icedcn repo.
+/// maintainers refresh it with `scripts/sync-google-fonts.py`.
 pub fn snapshot() -> Result<Catalog, Error> {
     catalog::parse(include_str!("../data/metadata.json"))
 }
