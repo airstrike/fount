@@ -12,9 +12,10 @@ repository = "https://github.com/airstrike/fount"
 [features]
 default = ["google"]
 # Google Fonts integration — catalog browsing and on-demand font downloads.
-# Pulls in an HTTP client (reqwest) and JSON parsing (serde_json). Disable
-# with `default-features = false` for system-fonts-only builds.
-google = ["dep:reqwest", "dep:serde_json"]
+# Pulls in an HTTP client (ureq natively, reqwest in browsers) and JSON
+# parsing (serde_json). Disable with `default-features = false` for
+# system-fonts-only builds.
+google = ["dep:reqwest", "dep:ureq", "dep:serde_json"]
 # Discover fonts bundled with Microsoft Office apps (e.g. Aptos, Calibri,
 # Cambria). These fonts ship inside per-app resource directories rather
 # than the OS font folders, so opting in scans those locations in addition
@@ -23,17 +24,22 @@ office = []
 
 [dependencies]
 iced_core = "0.15.0-dev"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", optional = true }
 thiserror = "2"
 tracing = "0.1"
 
+# Native I/O blocks on `blocking`'s thread pool, so fount runs under any
+# executor: iced's thread pool, Tokio or smol.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+blocking = "1"
 dirs = "6"
-tokio = { version = "1", features = ["fs"] }
+ureq = { version = "3", optional = true }
 toml = "0.8"
 ttf-parser = "0.25"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+reqwest = { version = "0.12", default-features = false, optional = true }
 
 [patch.crates-io]
 iced = { git = "https://github.com/iced-rs/iced", rev = "be88873d38544455e26c7a104eb757da2cbbac6b" }

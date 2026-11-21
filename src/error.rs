@@ -29,9 +29,16 @@ pub enum Error {
     NoFontUrls { family: String },
 }
 
-#[cfg(feature = "google")]
+#[cfg(all(feature = "google", target_arch = "wasm32"))]
 impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {
+        Self::Http(e.to_string())
+    }
+}
+
+#[cfg(all(feature = "google", not(target_arch = "wasm32")))]
+impl From<ureq::Error> for Error {
+    fn from(e: ureq::Error) -> Self {
         Self::Http(e.to_string())
     }
 }

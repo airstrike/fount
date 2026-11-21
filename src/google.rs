@@ -56,7 +56,7 @@ pub async fn catalog(max_age: Duration) -> Result<Catalog, Error> {
     let bundled = snapshot()?;
     #[cfg(not(target_arch = "wasm32"))]
     {
-        match cache::load_or_fetch_metadata(max_age)
+        match blocking::unblock(move || cache::load_or_fetch_metadata(max_age))
             .await
             .and_then(|raw| catalog::parse(&raw))
         {
@@ -115,7 +115,9 @@ pub async fn load_variants<V: AsRef<str>>(
 ) -> Result<Vec<Vec<u8>>, Error> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        cache::load_or_fetch_fonts(family, variants).await
+        let family = family.to_owned();
+        let variants: Vec<String> = variants.iter().map(|v| v.as_ref().to_owned()).collect();
+        blocking::unblock(move || cache::load_or_fetch_fonts(&family, &variants)).await
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -124,42 +126,6 @@ pub async fn load_variants<V: AsRef<str>>(
         let _ = variants;
         web::load(family).await
     }
-}
-
-/// Check if a variable-range font file in the cache covers the requested variant.
-///
-/// Variant `"400"` is covered by `"100..900.ttf"` if 100 <= 400 <= 900.
-/// Variant `"400i"` is covered by `"100..900i.ttf"`.
-#[cfg(test)]
-fn find_variable_cache(cache_dir: &std::path::Path, variant: &str) -> Option<Vec<u8>> {
-    let (weight, is_italic) = parse_variant(variant);
-    let entries = std::fs::read_dir(cache_dir).ok()?;
-
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_str()?;
-        let stem = name.strip_suffix(".ttf")?;
-
-        // Only match range patterns like "100..900" or "100..900i"
-        let (range_str, range_italic) = if let Some(s) = stem.strip_suffix('i') {
-            (s, true)
-        } else {
-            (stem, false)
-        };
-
-        if range_italic != is_italic {
-            continue;
-        }
-
-        if let Some((min, max)) = parse_weight_range(range_str)
-            && weight >= min
-            && weight <= max
-        {
-            return std::fs::read(entry.path()).ok();
-        }
-    }
-
-    None
 }
 
 /// Parse a variant key like `"400"` → (400, false) or `"700i"` → (700, true).
@@ -216,14 +182,14 @@ mod tests {
         std::fs::write(cache.join("100..900.ttf"), b"fake-font-data").unwrap();
 
         // "400" should match 100..900
-        assert!(find_variable_cache(cache, "400").is_some());
+        assert!(cache::find_variable_cache(cache, "400").is_some());
         // "700" should match too
-        assert!(find_variable_cache(cache, "700").is_some());
+        assert!(cache::find_variable_cache(cache, "700").is_some());
         // "400i" should NOT match (no italic range file)
-        assert!(find_variable_cache(cache, "400i").is_none());
+        assert!(cache::find_variable_cache(cache, "400i").is_none());
 
         // Add italic range
         std::fs::write(cache.join("100..900i.ttf"), b"fake-italic-data").unwrap();
-        assert!(find_variable_cache(cache, "400i").is_some());
+        assert!(cache::find_variable_cache(cache, "400i").is_some());
     }
 }

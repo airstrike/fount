@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use tokio::fs;
+use std::fs;
 
 use crate::Error;
 
@@ -14,11 +14,11 @@ pub(crate) fn cache_dir() -> Result<PathBuf, Error> {
 /// Check if a variable-range font file in the cache covers the requested variant.
 ///
 /// E.g. `100..900.ttf` covers variant `400`, `100..900i.ttf` covers `400i`.
-async fn find_variable_cache(cache_dir: &std::path::Path, variant: &str) -> Option<Vec<u8>> {
+pub(super) fn find_variable_cache(cache_dir: &std::path::Path, variant: &str) -> Option<Vec<u8>> {
     let (weight, is_italic) = super::parse_variant(variant);
-    let mut entries = fs::read_dir(cache_dir).await.ok()?;
+    let entries = fs::read_dir(cache_dir).ok()?;
 
-    while let Ok(Some(entry)) = entries.next_entry().await {
+    for entry in entries.flatten() {
         let name = entry.file_name();
         let name = name.to_str()?;
         let stem = name.strip_suffix(".ttf")?;
@@ -37,31 +37,31 @@ async fn find_variable_cache(cache_dir: &std::path::Path, variant: &str) -> Opti
             && weight >= min
             && weight <= max
         {
-            return fs::read(entry.path()).await.ok();
+            return fs::read(entry.path()).ok();
         }
     }
 
     None
 }
 
-/// Load catalog metadata from disk cache, or fetch and cache it.
-pub(crate) async fn load_or_fetch_metadata(max_age: Duration) -> Result<String, Error> {
+/// Load catalog metadata from disk cache, or fetch and cache it. Blocks.
+pub(crate) fn load_or_fetch_metadata(max_age: Duration) -> Result<String, Error> {
     let dir = cache_dir()?;
     let path = dir.join("metadata.json");
 
-    if let Ok(meta) = fs::metadata(&path).await
+    if let Ok(meta) = fs::metadata(&path)
         && let Ok(modified) = meta.modified()
         && modified.elapsed().unwrap_or(Duration::MAX) < max_age
-        && let Ok(data) = fs::read_to_string(&path).await
+        && let Ok(data) = fs::read_to_string(&path)
     {
         tracing::debug!("using cached metadata from {}", path.display());
         return Ok(data);
     }
 
     tracing::info!("fetching Google Fonts metadata");
-    let data = super::fetch::metadata().await?;
-    fs::create_dir_all(&dir).await?;
-    fs::write(&path, &data).await?;
+    let data = super::fetch::metadata()?;
+    fs::create_dir_all(&dir)?;
+    fs::write(&path, &data)?;
     Ok(data)
 }
 
@@ -71,7 +71,9 @@ pub(crate) async fn load_or_fetch_metadata(max_age: Duration) -> Result<String, 
 /// 1. Exact static file (e.g. `400.ttf`)
 /// 2. Variable-range file (e.g. `100..900.ttf` covers variant `400`)
 /// 3. Downloads from Google Fonts if neither is cached
-pub(crate) async fn load_or_fetch_fonts<V: AsRef<str>>(
+///
+/// Blocks on disk and network I/O.
+pub(crate) fn load_or_fetch_fonts<V: AsRef<str>>(
     family: &str,
     variants: &[V],
 ) -> Result<Vec<Vec<u8>>, Error> {
@@ -83,13 +85,13 @@ pub(crate) async fn load_or_fetch_fonts<V: AsRef<str>>(
         let variant = variant.as_ref();
         // 1. Exact match
         let path = dir.join(format!("{variant}.ttf"));
-        if let Ok(bytes) = fs::read(&path).await {
+        if let Ok(bytes) = fs::read(&path) {
             tracing::debug!("cache hit: {family} {variant}");
             all_bytes.push(bytes);
             continue;
         }
         // 2. Variable-range match
-        if let Some(bytes) = find_variable_cache(&dir, variant).await {
+        if let Some(bytes) = find_variable_cache(&dir, variant) {
             tracing::debug!("variable cache hit: {family} {variant}");
             all_bytes.push(bytes);
             continue;
@@ -103,7 +105,7 @@ pub(crate) async fn load_or_fetch_fonts<V: AsRef<str>>(
     }
 
     tracing::info!("downloading {family} variants: {uncached:?}");
-    let css_text = super::fetch::css(family, &uncached).await?;
+    let css_text = super::fetch::css(family, &uncached)?;
     let faces = super::css::parse(&css_text);
 
     if faces.is_empty() {
@@ -123,12 +125,12 @@ pub(crate) async fn load_or_fetch_fonts<V: AsRef<str>>(
         tracing::warn!("{family}: requested {uncached:?} but only found {found:?}");
     }
 
-    fs::create_dir_all(&dir).await?;
+    fs::create_dir_all(&dir)?;
 
     for face in &faces {
-        let bytes = super::fetch::bytes(&face.url).await?;
+        let bytes = super::fetch::bytes(&face.url)?;
         let path = dir.join(format!("{}.ttf", face.variant_key()));
-        if let Err(e) = fs::write(&path, &bytes).await {
+        if let Err(e) = fs::write(&path, &bytes) {
             tracing::warn!("failed to cache {}: {e}", path.display());
         }
         all_bytes.push(bytes);

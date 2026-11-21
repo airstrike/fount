@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-use tokio::fs;
 
 /// System font discovery settings.
 ///
@@ -280,7 +279,8 @@ pub fn discover(config: &Config) -> Vec<Font> {
 
 /// Load the raw bytes of a system font file.
 pub async fn load(font: &Font) -> Result<Vec<u8>, crate::Error> {
-    Ok(fs::read(&font.path).await?)
+    let path = font.path.clone();
+    Ok(blocking::unblock(move || std::fs::read(path)).await?)
 }
 
 /// List just the unique family names from a set of discovered fonts.

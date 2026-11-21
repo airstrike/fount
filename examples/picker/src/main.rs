@@ -109,14 +109,10 @@ impl App {
         ))
         .map(Message::CatalogLoaded);
 
-        // Discovery is blocking I/O. Keep it off the runtime thread.
-        let system_task = Task::future(async {
-            tokio::task::spawn_blocking(|| {
-                fount::system::discover(&fount::system::Config::default())
-            })
-            .await
-            .unwrap_or_default()
-        })
+        // Discovery is blocking I/O. Keep it off the executor's threads.
+        let system_task = Task::future(blocking::unblock(|| {
+            fount::system::discover(&fount::system::Config::default())
+        }))
         .map(Message::SystemDiscovered);
 
         (
